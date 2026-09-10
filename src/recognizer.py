@@ -28,6 +28,82 @@ _eye_cascade = None
 _model_instance = None
 _model_backend = None  # 'cv2_dnn', 'tf_keras', or None
 _labels_map = {}
+_student_templates = {}
+_templates_loaded = False
+
+
+def get_biometric_templates(dataset_dir="dataset", force_reload=False):
+    """
+    Open-Set Biometric Engine:
+    dataset/ folder se tamam registered students ke facial templates dynamically load karta hai.
+    Jab bhi naya student enroll ho ya koi delete ho, templates automatically update ho jate hain.
+    """
+    global _student_templates, _templates_loaded
+    if _templates_loaded and not force_reload:
+        return _student_templates
+
+    templates = {}
+    if os.path.exists(dataset_dir):
+        for folder in os.listdir(dataset_dir):
+            fpath = os.path.join(dataset_dir, folder)
+            if os.path.isdir(fpath):
+                # Folder format: "CS-109_Hamza_Rashid"
+                parts = folder.split("_", 1)
+                student_id = parts[0]
+                student_name = parts[1].replace("_", " ") if len(parts) > 1 else folder
+
+                sample_faces = []
+                for fname in os.listdir(fpath):
+                    if fname.lower().endswith(('.jpg', '.jpeg', '.png')):
+                        img_p = os.path.join(fpath, fname)
+                        im = cv2.imread(img_p, cv2.IMREAD_GRAYSCALE)
+                        if im is not None:
+                            im_eq = cv2.equalizeHist(im)
+                            sample_faces.append(cv2.resize(im_eq, (160, 160)).astype("float32"))
+
+                if sample_faces:
+                    mean_face = np.mean(sample_faces, axis=0)
+                    std_val = np.std(mean_face) + 1e-5
+                    norm_face = (mean_face - np.mean(mean_face)) / std_val
+                    templates[student_id] = {
+                        "name": student_name,
+                        "folder": folder,
+                        "template": norm_face,
+                        "sample_count": len(sample_faces)
+                    }
+
+    _student_templates = templates
+    _templates_loaded = True
+    print(f"[*] Biometric Engine: Loaded {len(templates)} enrolled student templates: {list(templates.keys())}")
+    return _student_templates
+
+
+def match_face_biometrics(face_gray_160, min_similarity=0.48):
+    """
+    Live face ko tamam registered students ke biometric templates se compare karta hai.
+    Agar similarity < min_similarity ho toh foran (None, 'Unknown Person') return karta hai.
+    """
+    templates = get_biometric_templates()
+    if not templates:
+        return None, "Unknown Person", 0.0
+
+    face_eq = cv2.equalizeHist(face_gray_160) if len(face_gray_160.shape) == 2 else face_gray_160
+    face_f = face_eq.astype("float32")
+    std_val = np.std(face_f) + 1e-5
+    fnorm = (face_f - np.mean(face_f)) / std_val
+
+    best_id = None
+    best_sim = -1.0
+
+    for sid, data in templates.items():
+        sim = float(np.mean(fnorm * data["template"]))
+        if sim > best_sim:
+            best_sim = sim
+            best_id = sid
+
+    if best_sim >= min_similarity and best_id is not None:
+        return best_id, templates[best_id]["name"], best_sim
+    return None, "Unknown Person", best_sim
 
 
 def load_detector():
@@ -185,37 +261,66 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
             })
             continue
 
+        # Illumination quality check (SRS: dim lighting / evening lighting guard)
+        mean_brightness = float(np.mean(cropped_face))
+        if mean_brightness < 45.0:
+            label_text = "Low Light - Face Not Clear"
+            box_color = (0, 0, 245)
+            cv2.rectangle(frame, (x, y), (x + fw, y + fh), box_color, 2)
+            cv2.putText(frame, label_text, (x, max(20, y - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
+            detected_boxes.append({
+                "box": [int(x), int(y), int(fw), int(fh)],
+                "name": label_text,
+                "student_id": None,
+                "confidence": 0,
+                "matched": False,
+                "status": "unverified"
+            })
+            continue
+
         student_identified = None
         confidence_pct = 0
 
-        if model is not None and labels:
-            # Match training data preprocessing: histogram equalization + RGB + 160x160
-            equalized_face = cv2.equalizeHist(cropped_face)
-            rgb_face = cv2.cvtColor(equalized_face, cv2.COLOR_GRAY2RGB)
-            resized = cv2.resize(rgb_face, (160, 160), interpolation=cv2.INTER_AREA)
+        # Preprocessing: Histogram equalization + 160x160
+        equalized_face = cv2.equalizeHist(cropped_face)
+        resized_gray = cv2.resize(equalized_face, (160, 160), interpolation=cv2.INTER_AREA)
 
-            predictions = predict_probabilities(model, backend, resized)
+        # 1. Dynamic Biometric Template Matching (Open-Set Metric Check)
+        templates = get_biometric_templates()
+        bio_sid, bio_name, bio_sim = match_face_biometrics(resized_gray, min_similarity=0.48)
+
+        # 2. Deep Learning inference (if available)
+        deep_match_id = None
+        deep_conf = 0.0
+        if model is not None and labels:
+            rgb_face = cv2.cvtColor(equalized_face, cv2.COLOR_GRAY2RGB)
+            resized_rgb = cv2.resize(rgb_face, (160, 160), interpolation=cv2.INTER_AREA)
+            predictions = predict_probabilities(model, backend, resized_rgb)
             if predictions is not None and len(predictions) > 0:
                 best_idx = int(np.argmax(predictions))
                 best_conf = float(predictions[best_idx])
-                confidence_pct = int(best_conf * 100)
-
-                # Pure AI/ML check: verify decisive logit/confidence margin over runner-up class
                 sorted_preds = np.sort(predictions)[::-1]
                 runner_up = float(sorted_preds[1]) if len(sorted_preds) > 1 else 0.0
                 margin = best_conf - runner_up
-
-                # Strict criteria: Must exceed confidence threshold AND have a decisive margin (>= 35%)
                 if best_conf >= confidence_threshold and margin >= 0.35:
-                    class_name = labels.get(str(best_idx), labels.get(best_idx, "Unknown"))
-                    # Label format: "CS-109_Hamza_Rashid"
-                    parts = class_name.split("_", 1)
-                    student_id = parts[0]
-                    student_name = parts[1].replace("_", " ") if len(parts) > 1 else class_name
+                    class_name = labels.get(str(best_idx), labels.get(best_idx, ""))
+                    deep_match_id = class_name.split("_", 1)[0] if class_name else None
+                    deep_conf = best_conf
 
+        # 3. VERIFICATION DECISION:
+        # A face is VERIFIED IF AND ONLY IF:
+        # - bio_sid is NOT None (it matches an active enrolled student template with >= 48% similarity)
+        # - AND bio_sid actually exists in current active templates (prevents ghost/deleted students like Akshay)
+        # - AND if deep model is active, deep model confirms bio_sid OR bio_sim is very decisive (>= 0.60)
+        if bio_sid and bio_sid in templates:
+            if deep_match_id is None or deep_match_id == bio_sid or bio_sim >= 0.60:
+                calc_conf = max(int(bio_sim * 100), int(deep_conf * 100) if deep_match_id == bio_sid else 85)
+                confidence_pct = min(99, calc_conf)
+                if confidence_pct >= int(confidence_threshold * 100):
                     student_identified = {
-                        "student_id": student_id,
-                        "name": student_name,
+                        "student_id": bio_sid,
+                        "name": bio_name,
                         "confidence": confidence_pct
                     }
                     recognized_students.append(student_identified)
@@ -235,12 +340,8 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
                 "status": "verified"
             })
         else:
-            # Unverified, below threshold, or ambiguous: Render RED/ROSE box
-            if model is not None and confidence_pct > 0:
-                label_text = f"Low Match ({confidence_pct}% < {int(confidence_threshold * 100)}%)"
-            else:
-                label_text = "Unverified Face"
-                
+            # Unknown Person / Unverified Face: Render RED box
+            label_text = "Unknown Person"
             box_color = (0, 0, 245) # Bright Red
             cv2.rectangle(frame, (x, y), (x + fw, y + fh), box_color, 2)
             cv2.putText(frame, label_text, (x, max(20, y - 10)),
@@ -250,7 +351,7 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
                 "box": [int(x), int(y), int(fw), int(fh)],
                 "name": label_text,
                 "student_id": None,
-                "confidence": confidence_pct,
+                "confidence": 0,
                 "matched": False,
                 "status": "unverified"
             })

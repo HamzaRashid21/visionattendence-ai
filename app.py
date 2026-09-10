@@ -481,15 +481,15 @@ def process_webcam_frame_api():
         if frame is None:
             return jsonify({"success": False, "error": "Invalid image format"}), 400
 
-        # Dynamic threshold from settings (default: 80% / 0.80)
+        # Dynamic threshold from settings (default: 95% / 0.95)
         rec = Setting.query.filter_by(key="recognition_threshold").first()
-        threshold = 0.80
+        threshold = 0.95
         if rec and rec.value:
             try:
                 val = float(rec.value.strip())
                 threshold = max(0.50, min(0.99, val / 100.0 if val > 1 else val))
             except Exception:
-                threshold = 0.80
+                threshold = 0.95
 
         annotated_frame, recognized_students, detected_boxes = process_frame(
             frame, confidence_threshold=threshold, return_boxes=True
@@ -878,6 +878,14 @@ def save_dataset_sample():
     filepath = os.path.join(student_dir, filename)
     cv2.imwrite(filepath, equalized)
 
+    # When sufficient biometric photos are collected, update biometric templates cache immediately
+    if count >= 40:
+        try:
+            from src.recognizer import get_biometric_templates
+            get_biometric_templates(force_reload=True)
+        except Exception:
+            pass
+
     return jsonify({
         "success": True,
         "face_detected": True,
@@ -961,16 +969,34 @@ def add_student():
 @app.route('/students/delete/<student_id>', methods=['POST'])
 @admin_required
 def delete_student(student_id):
-    """Delete a student profile."""
+    """Delete a student profile, attendance history, and biometric dataset."""
+    import shutil
     student = Student.query.filter_by(student_id=student_id).first()
     if student:
         user = User.query.filter_by(student_id=student_id).first()
         if user:
             db.session.delete(user)
+        # Clean attendance records for this student
+        Attendance.query.filter_by(student_id=student_id).delete()
         db.session.delete(student)
         db.session.commit()
-        flash(f"Student #{student_id} delete ho gaya.", "success")
+
+        # Clean up dataset directory for this student
+        if os.path.exists("dataset"):
+            for folder in os.listdir("dataset"):
+                if folder.startswith(f"{student_id}_") or folder == student_id:
+                    shutil.rmtree(os.path.join("dataset", folder), ignore_errors=True)
+
+        # Force reload biometric templates cache immediately
+        try:
+            from src.recognizer import get_biometric_templates
+            get_biometric_templates(force_reload=True)
+        except Exception as e:
+            print(f"[!] Warning: Could not reload biometric templates: {e}")
+
+        flash(f"Student #{student_id} aur unka biometric dataset delete ho gaya.", "success")
     return redirect(url_for('students'))
+
 
 
 @app.route('/classes')
