@@ -122,13 +122,13 @@ async function triggerModelTraining() {
     stepPct.innerText = '20%';
     stepLabel.innerText = 'Scanning dataset directories...';
 
-    setTimeout(() => {
+    const t1 = setTimeout(() => {
         pBar.style.width = '55%';
         stepPct.innerText = '55%';
         stepLabel.innerText = 'Computing 160x160 normalized facial vectors...';
     }, 400);
 
-    setTimeout(() => {
+    const t2 = setTimeout(() => {
         pBar.style.width = '85%';
         stepPct.innerText = '85%';
         stepLabel.innerText = 'Updating biometric weights & labels...';
@@ -137,6 +137,9 @@ async function triggerModelTraining() {
     try {
         const resp = await fetch('/api/train_model', { method: 'POST' });
         const data = await resp.json();
+
+        clearTimeout(t1);
+        clearTimeout(t2);
 
         pBar.style.width = '100%';
         stepPct.innerText = '100%';
