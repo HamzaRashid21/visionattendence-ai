@@ -86,37 +86,37 @@ def populate_sample_data_if_empty():
             db.session.commit()
             print("[*] Default System Settings seeded.")
 
-        # 3. Seed Students
+        # 3. Seed Students (Strictly active enrolled students)
         if Student.query.count() == 0:
             samples = [
-                Student(student_id="CS-001", name="Ali Raza", department="BCS - 1A", email="ali.raza@university.edu"),
-                Student(student_id="CS-002", name="Ayesha Khan", department="BCS - 1A", email="ayesha.khan@university.edu"),
-                Student(student_id="CS-003", name="Hamza Ali", department="BCS - 1A", email="hamza.ali@university.edu"),
-                Student(student_id="CS-004", name="Saman Fatima", department="BCS - 1A", email="saman.f@university.edu"),
-                Student(student_id="CS-005", name="Usman Tariq", department="BCS - 1A", email="usman.t@university.edu"),
-                Student(student_id="CS-006", name="Zainab Noor", department="BCS - 1A", email="zainab.n@university.edu")
+                Student(student_id="CS-109", name="Hamza Rashid", department="BAI-3B", email="hamzarashid7966@gmail.com"),
+                Student(student_id="CS-101", name="Shafi Sani", department="BAI-3B", email="shafi.sani@apex.edu.pk"),
+                Student(student_id="CS-102", name="Abdullah Ibrar", department="BAI-3B", email="abdullah.ibrar@apex.edu.pk"),
+                Student(student_id="CS-103", name="Muhammad Ahmed", department="BAI-3B", email="muhammad.ahmed@apex.edu.pk")
             ]
             db.session.bulk_save_objects(samples)
             db.session.commit()
-            print("[*] Default Students seeded.")
+            print("[*] Enrolled Students seeded (CS-109 Hamza Rashid, CS-101 Shafi Sani, CS-102 Abdullah Ibrar, CS-103 Muhammad Ahmed).")
 
-        # 4. Seed Users (Admin and Students)
+        # 4. Seed Users (Admin and Enrolled Students)
         if User.query.count() == 0:
-            admin_user = User(username="admin", email="admin@university.edu", role="admin")
+            admin_user = User(username="admin", email="admin@apex.edu.pk", role="admin")
             admin_user.set_password("admin123")
             db.session.add(admin_user)
 
-            student_user = User(username="CS-001", email="ali.raza@university.edu", role="student", student_id="CS-001")
-            student_user.set_password("student123")
-            db.session.add(student_user)
-
-            # Ensure student profile also exists for CS-001
-            if not Student.query.filter_by(student_id="CS-001").first():
-                s = Student(student_id="CS-001", name="Ali Raza", department="BCS - 1A", email="ali.raza@university.edu")
-                db.session.add(s)
+            student_users = [
+                ("CS-109", "hamzarashid7966@gmail.com", "CS-109"),
+                ("CS-101", "shafi.sani@apex.edu.pk", "CS-101"),
+                ("CS-102", "abdullah.ibrar@apex.edu.pk", "CS-102"),
+                ("CS-103", "muhammad.ahmed@apex.edu.pk", "CS-103")
+            ]
+            for uname, uemail, sid in student_users:
+                u = User(username=uname, email=uemail, role="student", student_id=sid)
+                u.set_password("student123")
+                db.session.add(u)
 
             db.session.commit()
-            print("[*] Default Admin (admin/admin123) and Student (CS-001/student123) users created.")
+            print("[*] Admin and Student portal accounts created.")
 
 
 populate_sample_data_if_empty()
