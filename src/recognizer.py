@@ -200,8 +200,13 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
                 best_conf = float(predictions[best_idx])
                 confidence_pct = int(best_conf * 100)
 
-                # Dynamic confidence threshold from settings (e.g. 80% / 0.80)
-                if best_conf >= confidence_threshold:
+                # Pure AI/ML check: verify decisive logit/confidence margin over runner-up class
+                sorted_preds = np.sort(predictions)[::-1]
+                runner_up = float(sorted_preds[1]) if len(sorted_preds) > 1 else 0.0
+                margin = best_conf - runner_up
+
+                # Strict criteria: Must exceed confidence threshold AND have a decisive margin (>= 35%)
+                if best_conf >= confidence_threshold and margin >= 0.35:
                     class_name = labels.get(str(best_idx), labels.get(best_idx, "Unknown"))
                     # Label format: "CS-109_Hamza_Rashid"
                     parts = class_name.split("_", 1)
@@ -216,34 +221,39 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
                     recognized_students.append(student_identified)
 
         if student_identified:
-            # Recognized with high confidence! Render GREEN box
+            # Recognized with decisive high confidence! Render GREEN box
             cv2.rectangle(frame, (x, y), (x + fw, y + fh), (0, 255, 0), 2)
             display_text = f"{student_identified['name']} ({confidence_pct}%)"
             cv2.putText(frame, display_text, (x, max(20, y - 10)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            detected_boxes.append({
+                "box": [int(x), int(y), int(fw), int(fh)],
+                "name": student_identified["name"],
+                "student_id": student_identified["student_id"],
+                "confidence": confidence_pct,
+                "matched": True,
+                "status": "verified"
+            })
         else:
-            # Unknown, unverified, or confidence below threshold (<80%): Render AMBER/CYAN box
+            # Unverified, below threshold, or ambiguous: Render RED/ROSE box
             if model is not None and confidence_pct > 0:
                 label_text = f"Low Match ({confidence_pct}% < {int(confidence_threshold * 100)}%)"
-                box_color = (0, 165, 255) # Amber
-            elif model is not None:
-                label_text = "Unknown Face"
-                box_color = (0, 165, 255)
             else:
-                label_text = "Face Detected"
-                box_color = (255, 255, 0)
+                label_text = "Unverified Face"
                 
+            box_color = (0, 0, 245) # Bright Red
             cv2.rectangle(frame, (x, y), (x + fw, y + fh), box_color, 2)
             cv2.putText(frame, label_text, (x, max(20, y - 10)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
 
-        detected_boxes.append({
-            "box": [int(x), int(y), int(fw), int(fh)],
-            "name": student_identified["name"] if student_identified else (f"Low Match ({confidence_pct}%)" if confidence_pct > 0 else "Scanning Face..."),
-            "student_id": student_identified["student_id"] if student_identified else None,
-            "confidence": confidence_pct,
-            "matched": bool(student_identified)
-        })
+            detected_boxes.append({
+                "box": [int(x), int(y), int(fw), int(fh)],
+                "name": label_text,
+                "student_id": None,
+                "confidence": confidence_pct,
+                "matched": False,
+                "status": "unverified"
+            })
 
     if return_boxes:
         return frame, recognized_students, detected_boxes

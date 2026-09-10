@@ -274,8 +274,8 @@
                 const h = rawH * scaleY;
 
                 const isMatched = face.matched;
-                const strokeColor = isMatched ? '#10B981' : '#F59E0B';
-                const fillColor = isMatched ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.10)';
+                const strokeColor = isMatched ? '#10B981' : '#EF4444'; // Emerald Green vs Red
+                const fillColor = isMatched ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.14)';
 
                 // Face background glow
                 ctx.fillStyle = fillColor;
@@ -311,7 +311,7 @@
                 ctx.stroke();
 
                 // Floating HUD Badge
-                const labelText = isMatched ? `✓ ${face.name} (${face.confidence}%)` : `🔍 ${face.name}`;
+                const labelText = isMatched ? `✓ ${face.name} (${face.confidence}%)` : `❌ ${face.name}`;
                 ctx.font = 'bold 13px Inter, sans-serif';
                 const textMetrics = ctx.measureText(labelText);
                 const tagW = textMetrics.width + 16;
@@ -319,7 +319,7 @@
                 const tagX = Math.max(4, Math.min(x + (w - tagW) / 2, vw - tagW - 4));
                 const tagY = Math.max(4, y - tagH - 6);
 
-                ctx.fillStyle = isMatched ? '#10B981' : '#F59E0B';
+                ctx.fillStyle = isMatched ? '#10B981' : '#EF4444';
                 ctx.beginPath();
                 ctx.roundRect ? ctx.roundRect(tagX, tagY, tagW, tagH, 6) : ctx.rect(tagX, tagY, tagW, tagH);
                 ctx.fill();
