@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}System Settings{% endblock %}
+
+{% block content %}
+<div class="space-y-7 max-w-4xl">
+    <div class="pb-2 border-b border-slate-200/80">
+        <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">System Configuration & Parameters</h1>
+        <p class="text-xs text-slate-500 mt-0.5">Manage face recognition thresholds, anti-proxy rules, and campus settings stored in SQLite</p>
+    </div>
+
+    <!-- Settings Form -->
+    <form method="POST" action="{{ url_for('update_settings') }}" class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-sm space-y-6">
+
+        <!-- Section 1: Campus & General -->
+        <div>
+            <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-school text-emerald-600"></i> General Campus Settings
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Institution Name</label>
+                    <input type="text" name="institute_name" value="{{ settings.get('institute_name', 'Apex Institute of Technology') }}" required 
+                           class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                    <p class="text-[11px] text-slate-400 mt-1">Displayed on the Public Kiosk and PDF reports</p>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Auto-Absent Cutoff Time</label>
+                    <input type="time" name="auto_absent_time" value="{{ settings.get('auto_absent_time', '17:00') }}" 
+                           class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                    <p class="text-[11px] text-slate-400 mt-1">End of session time for automated absent marking</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: AI Model & Camera -->
+        <div class="border-t border-slate-100 pt-5">
+            <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-microchip text-emerald-600"></i> Face Recognition & Vision Engine
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Match Confidence Threshold (%)</label>
+                    <input type="number" min="50" max="99" name="recognition_threshold" value="{{ settings.get('recognition_threshold', '80') }}" required 
+                           class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                    <p class="text-[11px] text-slate-400 mt-1">Minimum similarity percentage to confirm presence</p>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Scan Cooldown Delay (Seconds)</label>
+                    <input type="number" min="10" max="300" name="cooldown_seconds" value="{{ settings.get('cooldown_seconds', '60') }}" required 
+                           class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                    <p class="text-[11px] text-slate-400 mt-1">Locks repeated duplicate scans within timeframe</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: Security & Anti-Proxy -->
+        <div class="border-t border-slate-100 pt-5">
+            <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-shield-halved text-emerald-600"></i> Security & Proxy Prevention
+            </h3>
+            <div class="flex items-center space-x-3 text-xs bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4">
+                <input type="checkbox" name="liveness_check_enabled" id="livenessCheck" value="true" {% if settings.get('liveness_check_enabled', 'true') == 'true' %}checked{% endif %}
+                       class="h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300">
+                <label for="livenessCheck" class="font-bold text-slate-800 cursor-pointer">
+                    Enable Optical Liveness & Eye-Blink Texture Analysis (Anti-Spoofing)
+                    <span class="block text-[11px] text-slate-500 font-normal">Blocks photo prints, cardboard cutouts, and mobile screen spoofing attempts.</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Save Button -->
+        <div class="border-t border-slate-100 pt-5 flex items-center justify-between">
+            <span class="text-xs text-slate-400">Settings are persisted in SQLite (`system_settings` table)</span>
+            <button type="submit" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all">
+                Save Configuration
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Portal - VisionAttend AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body class="bg-[#F8FAFC] text-slate-800 font-sans antialiased min-h-screen flex flex-col justify-between">
+
+    <!-- Top Navigation Bar for Student Portal -->
+    <header class="h-20 bg-white border-b border-slate-200/80 px-6 sm:px-12 flex items-center justify-between sticky top-0 z-40">
+        <!-- Logo -->
+        <div class="flex items-center space-x-3">
+            <div class="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600 text-xl shadow-sm">
+                <i class="fa-solid fa-graduation-cap"></i>
+            </div>
+            <div>
+                <h1 class="text-base font-bold text-slate-900 tracking-tight leading-tight">Student Portal</h1>
+                <p class="text-xs text-slate-500 font-medium">AI Attendance Manager</p>
+            </div>
+        </div>
+
+        <!-- Student Profile & Logout -->
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-3 pr-4 border-r border-slate-200">
+                <div class="h-10 w-10 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center font-extrabold text-sm shadow-sm">
+                    {{ student.name[0] }}
+                </div>
+                <div class="hidden sm:block text-right">
+                    <h4 class="text-xs font-bold text-slate-900 leading-tight">{{ student.name }}</h4>
+                    <p class="text-[11px] font-mono text-slate-500 font-semibold">{{ student.student_id }}</p>
+                </div>
+            </div>
+
+            <!-- Logout Link -->
+            <a href="{{ url_for('logout') }}" title="Sign Out" class="px-3.5 py-2 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span class="hidden sm:inline">Logout</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-8 space-y-7">
+
+        <!-- Welcome Banner -->
+        <div class="bg-gradient-to-r from-[#090D16] to-[#131D2E] text-white rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 border border-slate-800">
+            <div class="space-y-1">
+                <span class="px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">Academic Year 2025-2026</span>
+                <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight pt-2">Welcome Back, {{ student.name }} 👋</h2>
+                <p class="text-xs text-slate-300">Roll No: <span class="font-mono font-bold text-white">{{ student.student_id }}</span> | Department / Class: <span class="font-semibold text-white">{{ student.department }}</span></p>
+            </div>
+
+            <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 text-center sm:text-right flex-shrink-0 w-full sm:w-auto">
+                <p class="text-[11px] text-slate-300 uppercase tracking-wider font-semibold">Overall Attendance</p>
+                <h3 class="text-3xl font-extrabold text-emerald-400 mt-0.5">{{ attendance_pct }}%</h3>
+                <span class="text-[10px] text-emerald-300 font-medium"><i class="fa-solid fa-check mr-1"></i> Good Standing</span>
+            </div>
+        </div>
+
+        <!-- 4 Metric Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <!-- Total Lectures -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-slate-500">Total Lectures</p>
+                    <h4 class="text-2xl font-extrabold text-slate-900 mt-1">{{ total_sessions }}</h4>
+                    <span class="text-[11px] text-slate-400 font-medium">Conducted so far</span>
+                </div>
+                <div class="h-12 w-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-book"></i>
+                </div>
+            </div>
+
+            <!-- Present Days -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-slate-500">Present Days</p>
+                    <h4 class="text-2xl font-extrabold text-emerald-600 mt-1">{{ present_count }}</h4>
+                    <span class="text-[11px] text-emerald-500 font-medium">Face Verified</span>
+                </div>
+                <div class="h-12 w-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+            </div>
+
+            <!-- Absent Days -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-slate-500">Absent Days</p>
+                    <h4 class="text-2xl font-extrabold text-rose-600 mt-1">{{ absent_count }}</h4>
+                    <span class="text-[11px] text-rose-500 font-medium">Unexcused</span>
+                </div>
+                <div class="h-12 w-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-circle-xmark"></i>
+                </div>
+            </div>
+
+            <!-- Late Days -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-slate-500">Late Days</p>
+                    <h4 class="text-2xl font-extrabold text-purple-600 mt-1">{{ late_count }}</h4>
+                    <span class="text-[11px] text-purple-500 font-medium">After grace period</span>
+                </div>
+                <div class="h-12 w-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-clock"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Personal Attendance History Table -->
+        <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">My Attendance Logs</h3>
+                    <p class="text-xs text-slate-500">Detailed records of your classroom entry, departure, and verified timestamps</p>
+                </div>
+                <span class="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-xl font-mono">
+                    Total Records: {{ my_records|length }}
+                </span>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs min-w-[600px]">
+                    <thead>
+                        <tr class="text-slate-400 font-semibold bg-slate-50/60 border-b border-slate-100">
+                            <th class="py-3 px-4">Date</th>
+                            <th class="py-3 px-4">In-Time</th>
+                            <th class="py-3 px-4">Out-Time</th>
+                            <th class="py-3 px-4">Presence Duration</th>
+                            <th class="py-3 px-4">Verification Method</th>
+                            <th class="py-3 px-4 text-right">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 text-slate-700">
+                        {% for rec in my_records %}
+                        <tr class="hover:bg-slate-50/70 transition-colors">
+                            <td class="py-3.5 px-4 font-mono font-semibold text-slate-800">{{ rec.date.strftime('%d %b %Y') }}</td>
+                            <td class="py-3.5 px-4 font-mono text-slate-700">{{ rec.in_time or '--' }}</td>
+                            <td class="py-3.5 px-4 font-mono text-slate-700">{{ rec.out_time or '--' }}</td>
+                            <td class="py-3.5 px-4 font-mono text-slate-700">
+                                {% if rec.duration_minutes > 0 %}
+                                {{ rec.duration_minutes }} mins
+                                {% else %}
+                                --
+                                {% endif %}
+                            </td>
+                            <td class="py-3.5 px-4 text-slate-500 text-[11px]">{{ rec.verification_method }}</td>
+                            <td class="py-3.5 px-4 text-right">
+                                {% if rec.status == 'Present' %}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">Present</span>
+                                {% elif rec.status == 'Late' %}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-600 border border-purple-100">Late</span>
+                                {% else %}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-100">Absent</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="py-10 text-center text-slate-400 text-xs">
+                                No attendance records logged yet.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-14 bg-white border-t border-slate-200/80 px-8 flex items-center justify-between text-xs text-slate-400">
+        <span>© VisionAttend AI · Student Portal</span>
+        <span>Verified by AI Facial Recognition</span>
+    </footer>
+
+</body>
+</html>

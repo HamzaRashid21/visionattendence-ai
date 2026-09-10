@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Face Biometric Database{% endblock %}
+
+{% block content %}
+<div class="space-y-7">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Face Biometric Database</h1>
+            <p class="text-xs text-slate-500 mt-0.5">SRS Page 6 Requirement: Inspect captured grayscale face datasets and training samples</p>
+        </div>
+        <a href="{{ url_for('students') }}" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2">
+            <i class="fa-solid fa-camera"></i> Capture Face Dataset
+        </a>
+    </div>
+
+    <!-- Dataset Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {% for folder in dataset_folders %}
+        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="h-12 w-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 text-xl font-bold">
+                    <i class="fa-regular fa-image"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold text-slate-900">{{ folder.name }}</h3>
+                    <p class="text-xs text-slate-500">{{ folder.count }} Grayscale Samples</p>
+                </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span class="px-2 py-0.5 rounded-full font-bold {% if folder.count >= 100 %}bg-emerald-50 text-emerald-600{% else %}bg-amber-50 text-amber-600{% endif %}">
+                    {% if folder.count >= 100 %}100% Ready{% else %}{{ folder.count }}/100 Captured{% endif %}
+                </span>
+                <span class="text-slate-400 font-mono text-[11px]">160x160 Normalized</span>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-span-full py-12 text-center bg-white rounded-2xl border border-dashed border-slate-200">
+            <div class="h-12 w-12 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center mx-auto mb-2 text-xl">
+                <i class="fa-solid fa-folder-open"></i>
+            </div>
+            <h3 class="text-sm font-bold text-slate-800">No Image Datasets Captured Yet</h3>
+            <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">Run collect_dataset.py or use the webcam tool to capture 100+ images per student.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

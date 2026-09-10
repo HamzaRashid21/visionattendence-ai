@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Reports & Export{% endblock %}
+
+{% block content %}
+<div class="space-y-7">
+
+    <!-- Page Header & Export Buttons -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Attendance Logs & Reports</h1>
+            <p class="text-xs text-slate-500 mt-0.5">Filter date ranges, review presence durations, and download official attendance sheets</p>
+        </div>
+        <div class="flex items-center space-x-3">
+            <a href="{{ url_for('export_csv', start_date=start_date, end_date=end_date) }}" 
+               class="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-2">
+                <i class="fa-solid fa-file-csv text-emerald-600"></i> Export CSV
+            </a>
+            <a href="{{ url_for('export_excel', start_date=start_date, end_date=end_date) }}" 
+               class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2">
+                <i class="fa-solid fa-file-excel"></i> Export Excel (.xlsx)
+            </a>
+        </div>
+    </div>
+
+    <!-- Date Filter Bar -->
+    <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
+        <form method="GET" action="{{ url_for('reports') }}" class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+            <div class="sm:col-span-4">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Start Date</label>
+                <input type="date" name="start_date" value="{{ start_date }}" 
+                       class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+            </div>
+            <div class="sm:col-span-4">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">End Date</label>
+                <input type="date" name="end_date" value="{{ end_date }}" 
+                       class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+            </div>
+            <div class="sm:col-span-4 flex items-center space-x-2">
+                <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-filter"></i> Apply Filter
+                </button>
+                <a href="{{ url_for('reports') }}" class="py-2 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition-all">
+                    Reset
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Attendance Table -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden p-6">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="text-slate-400 font-semibold border-b border-slate-100 pb-2">
+                        <th class="py-3 px-3">Date</th>
+                        <th class="py-3 px-3">Roll No</th>
+                        <th class="py-3 px-3">Student Name</th>
+                        <th class="py-3 px-3">Class / Dept</th>
+                        <th class="py-3 px-3">In-Time</th>
+                        <th class="py-3 px-3">Out-Time</th>
+                        <th class="py-3 px-3">Duration</th>
+                        <th class="py-3 px-3">Method</th>
+                        <th class="py-3 px-3 text-right">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50 text-slate-700">
+                    {% for rec in records %}
+                    <tr class="hover:bg-slate-50/70 transition-colors">
+                        <td class="py-3.5 px-3 font-mono text-slate-400">{{ rec.date.strftime('%Y-%m-%d') }}</td>
+                        <td class="py-3.5 px-3 font-mono font-bold text-slate-900">{{ rec.student_id }}</td>
+                        <td class="py-3.5 px-3 font-bold text-slate-900">{{ rec.student.name if rec.student else 'Unknown' }}</td>
+                        <td class="py-3.5 px-3 text-slate-500">{{ rec.student.department if rec.student else 'N/A' }}</td>
+                        <td class="py-3.5 px-3 font-mono text-slate-700">{{ rec.in_time or '--' }}</td>
+                        <td class="py-3.5 px-3 font-mono text-slate-700">{{ rec.out_time or '--' }}</td>
+                        <td class="py-3.5 px-3 font-mono text-slate-700">
+                            {% if rec.duration_minutes > 0 %}
+                            {{ rec.duration_minutes }} mins
+                            {% else %}
+                            --
+                            {% endif %}
+                        </td>
+                        <td class="py-3.5 px-3 text-slate-400 text-[11px]">{{ rec.verification_method }}</td>
+                        <td class="py-3.5 px-3 text-right">
+                            {% if rec.status == 'Present' %}
+                            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                Present
+                            </span>
+                            {% else %}
+                            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-600 border border-rose-100">
+                                Absent
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="py-10 text-center text-slate-400 text-xs">
+                            No attendance records match the selected date filter.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

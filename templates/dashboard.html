@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-7">
+
+    <!-- ======================================================== -->
+    <!-- Top Greeting Banner & Real-time Date/Time                -->
+    <!-- ======================================================== -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                Good Morning, Admin <span>👋</span>
+            </h1>
+            <p class="text-xs text-slate-500 mt-0.5">Here's what's happening with your attendance today.</p>
+        </div>
+
+        <!-- Date & Time Chips -->
+        <div class="flex items-center space-x-3 text-xs text-slate-600">
+            <div class="bg-white border border-slate-200/80 rounded-xl px-3.5 py-2 flex items-center space-x-2 shadow-sm">
+                <i class="fa-regular fa-calendar text-slate-400"></i>
+                <span class="font-medium" id="currentDateDisplay">{{ today_str }}</span>
+            </div>
+            <div class="bg-white border border-slate-200/80 rounded-xl px-3.5 py-2 flex items-center space-x-2 shadow-sm">
+                <i class="fa-regular fa-clock text-slate-400"></i>
+                <span class="font-medium" id="currentTimeDisplay">{{ current_time_str }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- AI Deep Learning Model Performance Badge                 -->
+    <!-- ======================================================== -->
+    <div class="bg-[#090D16] border border-emerald-500/30 rounded-2xl p-4 sm:p-5 text-white shadow-xl shadow-emerald-950/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div class="flex items-start sm:items-center space-x-3 sm:space-x-4">
+            <div class="h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 text-xl sm:text-2xl shadow-lg shadow-emerald-500/20 flex-shrink-0">
+                <i class="fa-solid fa-brain"></i>
+            </div>
+            <div>
+                <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <h3 class="text-sm sm:text-base font-bold text-white tracking-tight">VisionAttend Deep Learning Model</h3>
+                    <span class="text-[9px] sm:text-[10px] bg-emerald-500/20 text-emerald-400 font-extrabold px-2 sm:px-2.5 py-0.5 rounded-full border border-emerald-500/40">100% ACCURACY · ACTIVE</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Architecture: <strong class="text-slate-200">MobileNetV2</strong> · Latency: <strong class="text-emerald-400">&lt;15ms</strong> · Classes: <strong class="text-slate-200">{{ model_classes_str }}</strong></p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3.5 py-2">
+            <i class="fa-solid fa-circle-check"></i>
+            <span>System Operational</span>
+        </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- 4 KPI Metric Cards (Refined Theme)                       -->
+    <!-- ======================================================== -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        
+        <!-- Card 1: Total Students -->
+        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-start justify-between">
+            <div>
+                <p class="text-xs font-semibold text-slate-500">Total Students</p>
+                <h3 class="text-3xl font-extrabold text-slate-900 mt-2 tracking-tight">{{ total_students }}</h3>
+                <div class="flex items-center space-x-1 mt-2 text-xs font-semibold text-emerald-600">
+                    <i class="fa-solid fa-graduation-cap text-[10px]"></i>
+                    <span>{{ enrolled_classes_count }} Academic Batches</span>
+                </div>
+            </div>
+            <div class="h-12 w-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-xl flex-shrink-0">
+                <i class="fa-solid fa-users"></i>
+            </div>
+        </div>
+
+        <!-- Card 2: Present Today -->
+        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-start justify-between">
+            <div>
+                <p class="text-xs font-semibold text-slate-500">Present Today</p>
+                <h3 class="text-3xl font-extrabold text-slate-900 mt-2 tracking-tight">{{ present_today }}</h3>
+                <div class="flex items-center space-x-1 mt-2 text-xs font-semibold text-emerald-600">
+                    <i class="fa-solid fa-circle-check text-[10px]"></i>
+                    <span>Biometric Face Verified</span>
+                </div>
+            </div>
+            <div class="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl flex-shrink-0">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+        </div>
+
+        <!-- Card 3: Absent Today -->
+        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-start justify-between">
+            <div>
+                <p class="text-xs font-semibold text-slate-500">Absent Today</p>
+                <h3 class="text-3xl font-extrabold text-slate-900 mt-2 tracking-tight">{{ absent_today }}</h3>
+                <div class="flex items-center space-x-1 mt-2 text-xs font-semibold text-rose-500">
+                    <i class="fa-solid fa-clock text-[10px]"></i>
+                    <span>Unrecorded Presence</span>
+                </div>
+            </div>
+            <div class="h-12 w-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center text-xl flex-shrink-0">
+                <i class="fa-solid fa-circle-xmark"></i>
+            </div>
+        </div>
+
+        <!-- Card 4: Attendance Rate -->
+        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-start justify-between">
+            <div>
+                <p class="text-xs font-semibold text-slate-500">Attendance Rate</p>
+                <h3 class="text-3xl font-extrabold text-slate-900 mt-2 tracking-tight">{{ attendance_rate }}%</h3>
+                <div class="flex items-center space-x-1 mt-2 text-xs font-semibold text-emerald-600">
+                    <i class="fa-solid fa-chart-line text-[10px]"></i>
+                    <span>Calculated from Database</span>
+                </div>
+            </div>
+            <div class="h-12 w-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center text-xl flex-shrink-0">
+                <i class="fa-solid fa-chart-pie"></i>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- Middle Section: Trends Chart & Attendance Overview Donut -->
+    <!-- ======================================================== -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Weekly Trends Analytics Card (7 Cols) -->
+        <div class="lg:col-span-7 bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-base font-bold text-slate-900">Attendance Trends</h2>
+                    <p class="text-xs text-slate-400">Weekly present vs absent statistics</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="flex items-center text-xs font-medium text-slate-500"><span class="h-2.5 w-2.5 rounded-full bg-emerald-600 mr-1.5"></span> Present</span>
+                    <span class="flex items-center text-xs font-medium text-slate-500 ml-2"><span class="h-2.5 w-2.5 rounded-full bg-rose-500 mr-1.5"></span> Absent</span>
+                </div>
+            </div>
+            <div class="h-64 w-full">
+                <canvas id="weeklyAttendanceChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Attendance Overview Donut Card (5 Cols) -->
+        <div class="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+                <h2 class="text-base font-bold text-slate-900">Attendance Overview</h2>
+                <select class="text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 focus:outline-none">
+                    <option>Today</option>
+                    <option>This Week</option>
+                    <option>This Month</option>
+                </select>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-6 py-3">
+                <div class="relative h-44 w-44 flex items-center justify-center flex-shrink-0">
+                    <canvas id="overviewDonutChart"></canvas>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span class="text-2xl font-extrabold text-slate-900">{{ attendance_rate }}%</span>
+                        <span class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Attendance Rate</span>
+                    </div>
+                </div>
+
+                <div class="space-y-3.5 flex-1 w-full text-xs">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                            <span class="font-medium text-slate-600">Present</span>
+                        </div>
+                        <span class="font-bold text-slate-900">{{ present_today }}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="h-2.5 w-2.5 rounded-full bg-rose-500"></span>
+                            <span class="font-medium text-slate-600">Absent</span>
+                        </div>
+                        <span class="font-bold text-slate-900">{{ absent_today }}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="h-2.5 w-2.5 rounded-full bg-slate-400"></span>
+                            <span class="font-medium text-slate-600">Late</span>
+                        </div>
+                        <span class="font-bold text-slate-900">{{ late_today }}</span>
+                    </div>
+                    <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-slate-500 font-semibold">
+                        <span>Total Students</span>
+                        <span class="text-slate-900 font-bold">{{ total_students }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- Bottom Row: Recent Attendance & Quick Actions            -->
+    <!-- ======================================================== -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Recent Attendance Table (7 Cols) -->
+        <div class="lg:col-span-7 bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-bold text-slate-900">Recent Attendance</h2>
+                <a href="{{ url_for('reports') }}" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                    View All <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                </a>
+            </div>
+
+            {% if recent_items %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead>
+                        <tr class="text-slate-400 font-semibold border-b border-slate-100 pb-2">
+                            <th class="py-2.5 pr-2 font-semibold">#</th>
+                            <th class="py-2.5 px-3 font-semibold">Student Name</th>
+                            <th class="py-2.5 px-3 font-semibold">Roll No</th>
+                            <th class="py-2.5 px-3 font-semibold">Class</th>
+                            <th class="py-2.5 px-3 font-semibold">Status</th>
+                            <th class="py-2.5 pl-3 font-semibold text-right">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 text-slate-700">
+                        {% for item in recent_items %}
+                        <tr class="hover:bg-slate-50/70 transition-colors">
+                            <td class="py-3 pr-2 text-slate-400 font-medium">{{ loop.index }}</td>
+                            <td class="py-3 px-3 font-bold text-slate-900">{{ item.name }}</td>
+                            <td class="py-3 px-3 font-mono text-slate-500">{{ item.roll_no }}</td>
+                            <td class="py-3 px-3 text-slate-600 font-medium">{{ item.class_name }}</td>
+                            <td class="py-3 px-3">
+                                {% if item.status == 'Present' %}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                    Present
+                                </span>
+                                {% elif item.status == 'Late' %}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-600 border border-amber-100">
+                                    Late
+                                </span>
+                                {% else %}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-600 border border-rose-100">
+                                    Absent
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 pl-3 text-right font-medium text-slate-600">{{ item.time or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="py-12 flex flex-col items-center justify-center text-center space-y-3">
+                <div class="h-12 w-12 rounded-2xl bg-emerald-50 border border-emerald-200/60 text-emerald-600 flex items-center justify-center text-xl shadow-sm">
+                    <i class="fa-solid fa-clipboard-user"></i>
+                </div>
+                <div class="space-y-1">
+                    <h4 class="text-sm font-bold text-slate-800">No Attendance Logged Today Yet</h4>
+                    <p class="text-xs text-slate-400 max-w-sm">
+                        Start scanning on the Kiosk terminal or mark daily attendance in the Attendance Sheet.
+                    </p>
+                </div>
+                <div class="pt-2 flex items-center gap-2.5">
+                    <a href="{{ url_for('kiosk') }}" target="_blank" 
+                       class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-tv text-[10px]"></i> Open Kiosk
+                    </a>
+                    <a href="{{ url_for('attendance') }}" 
+                       class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-table-list text-[10px]"></i> Attendance Sheet
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Quick Actions (5 Cols - 2x2 grid) -->
+        <div class="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+            <h2 class="text-base font-bold text-slate-900 mb-4">Quick Actions</h2>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                <!-- Action 1: Mark Attendance -->
+                <a href="{{ url_for('attendance') }}" class="p-4 rounded-2xl border border-slate-100 bg-[#F8FAFC] hover:bg-emerald-50/60 hover:border-emerald-200 transition-all group flex flex-col justify-between">
+                    <div class="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-camera"></i>
+                    </div>
+                    <div class="mt-4">
+                        <h4 class="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">Mark Attendance</h4>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Start live recognition</p>
+                    </div>
+                </a>
+
+                <!-- Action 2: Add Student -->
+                <a href="{{ url_for('students') }}" class="p-4 rounded-2xl border border-slate-100 bg-[#F8FAFC] hover:bg-emerald-50/60 hover:border-emerald-200 transition-all group flex flex-col justify-between">
+                    <div class="h-10 w-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-user-plus"></i>
+                    </div>
+                    <div class="mt-4">
+                        <h4 class="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">Add Student</h4>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Register new student</p>
+                    </div>
+                </a>
+
+                <!-- Action 3: View Reports -->
+                <a href="{{ url_for('reports') }}" class="p-4 rounded-2xl border border-slate-100 bg-[#F8FAFC] hover:bg-emerald-50/60 hover:border-emerald-200 transition-all group flex flex-col justify-between">
+                    <div class="h-10 w-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-chart-simple"></i>
+                    </div>
+                    <div class="mt-4">
+                        <h4 class="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">View Reports</h4>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Check attendance reports</p>
+                    </div>
+                </a>
+
+                <!-- Action 4: Manage Classes -->
+                <a href="{{ url_for('classes') }}" class="p-4 rounded-2xl border border-slate-100 bg-[#F8FAFC] hover:bg-emerald-50/60 hover:border-emerald-200 transition-all group flex flex-col justify-between">
+                    <div class="h-10 w-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-graduation-cap"></i>
+                    </div>
+                    <div class="mt-4">
+                        <h4 class="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">Manage Classes</h4>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Add / Edit classes</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+function updateClock() {
+    const now = new Date();
+    const options = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' };
+    document.getElementById('currentDateDisplay').innerText = now.toLocaleDateString('en-US', options);
+    document.getElementById('currentTimeDisplay').innerText = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// 1. Weekly Trends Chart (Emerald & Rose)
+const ctxTrends = document.getElementById('weeklyAttendanceChart').getContext('2d');
+new Chart(ctxTrends, {
+    type: 'bar',
+    data: {
+        labels: {{ weekly_labels | tojson }},
+        datasets: [
+            {
+                label: 'Present',
+                data: {{ weekly_present | tojson }},
+                backgroundColor: '#059669',
+                borderRadius: 8,
+                barThickness: 16
+            },
+            {
+                label: 'Absent',
+                data: {{ weekly_absent | tojson }},
+                backgroundColor: '#EF4444',
+                borderRadius: 8,
+                barThickness: 16
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { grid: { display: false }, ticks: { color: '#94A3B8', font: { size: 11 } } },
+            y: { grid: { color: '#F1F5F9' }, ticks: { color: '#94A3B8', font: { size: 11 }, stepSize: 20 } }
+        }
+    }
+});
+
+// 2. Attendance Overview Donut Chart
+const ctxDonut = document.getElementById('overviewDonutChart').getContext('2d');
+new Chart(ctxDonut, {
+    type: 'doughnut',
+    data: {
+        labels: ['Present', 'Absent', 'Late'],
+        datasets: [{
+            data: [{{ present_today }}, {{ absent_today }}, {{ late_today }}],
+            backgroundColor: ['#10B981', '#EF4444', '#94A3B8'],
+            borderWidth: 0,
+            hoverOffset: 4
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '76%',
+        plugins: { legend: { display: false } }
+    }
+});
+</script>
+{% endblock %}

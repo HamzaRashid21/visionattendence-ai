@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Live Attendance Scanner{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- Left Column: Camera Feed & Real-time Vision (7 cols) -->
+    <div class="lg:col-span-7 space-y-4">
+        <div class="bg-slate-800/90 rounded-2xl p-4 border border-slate-700/70 shadow-xl relative overflow-hidden">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center space-x-2">
+                    <span class="relative flex h-3 w-3">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                    </span>
+                    <h2 class="text-base font-semibold text-white tracking-wide">Classroom Entrance Stream (30 FPS)</h2>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span id="fps-badge" class="text-xs bg-slate-700/80 px-2.5 py-1 rounded-md text-emerald-400 font-mono">Camera: Ready</span>
+                </div>
+            </div>
+
+            <!-- Video Display Container -->
+            <div class="relative aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 flex items-center justify-center group shadow-inner">
+                <img id="videoFeed" src="{{ url_for('video_feed') }}" 
+                     alt="Live AI Scanner Feed" 
+                     class="w-full h-full object-cover"
+                     onerror="this.onerror=null; this.src=''; document.getElementById('camera-fallback').classList.remove('hidden');" />
+                
+                <!-- Fallback if camera stream is closed or testing -->
+                <div id="camera-fallback" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 p-6 text-center">
+                    <div class="h-16 w-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 mb-3 text-2xl">
+                        <i class="fa-solid fa-video-slash"></i>
+                    </div>
+                    <h3 class="text-base font-medium text-slate-200">Webcam Not Connected or Busy</h3>
+                    <p class="text-xs text-slate-400 max-w-sm mt-1">Ensure your webcam is connected. You can also test attendance marking using the simulated scanner on the right.</p>
+                </div>
+
+                <!-- Bounding Box Scanner Overlay HUD -->
+                <div class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4">
+                    <div class="flex justify-between items-start">
+                        <div class="bg-slate-900/80 backdrop-blur-sm border border-slate-700/60 rounded-lg px-3 py-1.5 text-xs text-slate-300 font-mono flex items-center gap-2">
+                            <i class="fa-solid fa-shield-halved text-emerald-400"></i> Anti-Proxy Liveness Active
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-end">
+                        <div class="text-xs text-slate-400 font-mono bg-slate-900/80 px-2.5 py-1 rounded border border-slate-800">
+                            Resolution: 640x480 | Model: MobileNetV2
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Camera Controls & Help Tips -->
+            <div class="mt-3 flex items-center justify-between text-xs text-slate-400 px-1">
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-emerald-400"></i> Stand within 1–2 meters facing the camera.</span>
+                <span class="text-slate-500">Auto In-Time & Out-Time</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Verification Status Card & Today's Logs (5 cols) -->
+    <div class="lg:col-span-5 space-y-6">
+
+        <!-- Live Recognition Status Card -->
+        <div id="status-card" class="bg-slate-800/90 rounded-2xl p-5 border border-slate-700/70 shadow-xl relative overflow-hidden transition-all">
+            <div class="flex items-center justify-between mb-4 border-b border-slate-700/60 pb-3">
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300">Live Verification Card</h3>
+                <span id="status-badge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-700 text-slate-300">
+                    Awaiting Face...
+                </span>
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <!-- Avatar / Photo Frame -->
+                <div id="student-avatar" class="h-20 w-20 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-800 border-2 border-slate-600 flex items-center justify-center text-3xl text-slate-400 shadow-md overflow-hidden flex-shrink-0">
+                    <i class="fa-solid fa-user"></i>
+                </div>
+
+                <!-- Student Details -->
+                <div class="space-y-1">
+                    <h4 id="student-name" class="text-lg font-bold text-white tracking-tight">No Face In Focus</h4>
+                    <p id="student-meta" class="text-xs text-slate-400">Please position your face clearly in the camera</p>
+                    <div id="student-timestamps" class="text-xs text-emerald-400 font-mono mt-1 pt-1 hidden">
+                        In-Time: <span id="record-in-time" class="text-slate-200">--</span> | Duration: <span id="record-duration" class="text-slate-200">0 min</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instant Audio Chime Element -->
+            <audio id="success-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+            <audio id="warning-sound" src="https://assets.mixkit.co/active_storage/sfx/2874/2874-preview.mp3" preload="auto"></audio>
+        </div>
+
+        <!-- Today's Live Attendance Feed -->
+        <div class="bg-slate-800/90 rounded-2xl p-5 border border-slate-700/70 shadow-xl">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-300">Recent Scans (Today)</h3>
+                <a href="{{ url_for('reports') }}" class="text-xs text-emerald-400 hover:text-emerald-300">View All &rarr;</a>
+            </div>
+
+            <div class="overflow-hidden rounded-xl border border-slate-700/60">
+                <div class="max-h-64 overflow-y-auto divide-y divide-slate-700/60">
+                    <table class="min-w-full divide-y divide-slate-700 text-left text-xs">
+                        <thead class="bg-slate-900/60 text-slate-400 font-semibold sticky top-0">
+                            <tr>
+                                <th class="py-2.5 px-3">Student</th>
+                                <th class="py-2.5 px-3">In-Time</th>
+                                <th class="py-2.5 px-3">Out-Time</th>
+                                <th class="py-2.5 px-3 text-right">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent-logs-body" class="divide-y divide-slate-700/40 text-slate-300">
+                            {% for rec in recent_records %}
+                            <tr class="hover:bg-slate-700/30 transition-colors">
+                                <td class="py-2.5 px-3 font-medium text-white flex items-center gap-2">
+                                    <span class="h-6 w-6 rounded-full bg-emerald-600/30 text-emerald-400 flex items-center justify-center text-xs font-bold">{{ rec.student.name[0] }}</span>
+                                    <div>
+                                        <div>{{ rec.student.name }}</div>
+                                        <div class="text-[10px] text-slate-400">ID: {{ rec.student_id }}</div>
+                                    </div>
+                                </td>
+                                <td class="py-2.5 px-3 font-mono text-slate-300">{{ rec.in_time or '--' }}</td>
+                                <td class="py-2.5 px-3 font-mono text-slate-300">{{ rec.out_time or '--' }}</td>
+                                <td class="py-2.5 px-3 text-right">
+                                    {% if rec.status == 'Present' %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Present</span>
+                                    {% else %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">Absent</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="py-6 text-center text-slate-500 text-xs">
+                                    No attendance records scanned today yet.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto polling for live recognized face updates
+let lastMarkedStudentId = null;
+
+function checkLiveRecognition() {
+    fetch('/api/live_recognition_status')
+        .then(res => res.json())
+        .then(data => {
+            if (data.active && data.student_id) {
+                document.getElementById('status-badge').className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse";
+                document.getElementById('status-badge').innerText = `Verified (${data.confidence}%)`;
+                document.getElementById('student-name').innerText = data.name;
+                document.getElementById('student-meta').innerText = `Roll No: ${data.student_id} | ${data.department}`;
+                
+                if (data.in_time) {
+                    document.getElementById('student-timestamps').classList.remove('hidden');
+                    document.getElementById('record-in-time').innerText = data.in_time;
+                    document.getElementById('record-duration').innerText = `${data.duration_minutes} min`;
+                }
+
+                if (lastMarkedStudentId !== data.student_id) {
+                    lastMarkedStudentId = data.student_id;
+                    const sound = document.getElementById('success-sound');
+                    if (sound) sound.play().catch(() => {});
+                }
+            } else if (data.unknown) {
+                document.getElementById('status-badge').className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30";
+                document.getElementById('status-badge').innerText = "Unknown Face";
+                document.getElementById('student-name').innerText = "Unregistered Person";
+                document.getElementById('student-meta').innerText = "Not found in student database";
+            }
+        })
+        .catch(err => console.log('Polling...', err));
+}
+
+// Poll every 1.5 seconds for UI synchronization
+setInterval(checkLiveRecognition, 1500);
+</script>
+{% endblock %}

@@ -1,0 +1,515 @@
+{% extends "base.html" %}
+
+{% block title %}Students Management{% endblock %}
+
+{% block content %}
+<div class="space-y-7">
+
+    <!-- Header & Action Buttons -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
+        <div>
+            <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Student Digital Profiles</h1>
+            <p class="text-xs text-slate-500 mt-0.5">Manage enrolled students, capture facial biometric datasets, and export for model training</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <a href="{{ url_for('export_dataset_zip') }}" title="Download all captured faces as dataset.zip for Colab"
+               class="flex-1 sm:flex-initial px-3 sm:px-3.5 py-2 sm:py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm">
+                <i class="fa-solid fa-file-zipper text-emerald-600"></i>
+                <span><span class="hidden xs:inline">Export </span>dataset.zip</span>
+            </a>
+            <button onclick="document.getElementById('enrollModal').classList.remove('hidden')" 
+                    class="flex-1 sm:flex-initial px-3.5 sm:px-4 py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-user-plus"></i> <span>Enroll Student</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Student Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for student in students %}
+        {% set sample_count = dataset_counts.get(student.student_id, 0) %}
+        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+            <div class="flex items-start space-x-4">
+                <div class="h-14 w-14 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-xl font-extrabold flex-shrink-0">
+                    {{ student.name[0] }}
+                </div>
+                <div class="space-y-1 min-w-0 flex-1">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-slate-900 truncate">{{ student.name }}</h3>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-100 text-slate-700">#{{ student.student_id }}</span>
+                    </div>
+                    <p class="text-xs text-slate-500"><i class="fa-solid fa-graduation-cap text-slate-400 mr-1"></i> {{ student.department }}</p>
+                    <p class="text-xs text-slate-500 truncate"><i class="fa-solid fa-envelope text-slate-400 mr-1"></i> {{ student.email or 'No email listed' }}</p>
+                </div>
+            </div>
+
+            <!-- Biometric Dataset Status Indicator -->
+            <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                {% if sample_count >= 50 %}
+                <span class="text-emerald-600 font-bold flex items-center gap-1.5" id="statusBadge-{{ student.student_id }}">
+                    <i class="fa-solid fa-circle-check"></i> {{ sample_count }} Samples Ready
+                </span>
+                {% elif sample_count > 0 %}
+                <span class="text-amber-600 font-bold flex items-center gap-1.5" id="statusBadge-{{ student.student_id }}">
+                    <i class="fa-solid fa-triangle-exclamation"></i> {{ sample_count }}/60 Incomplete
+                </span>
+                {% else %}
+                <span class="text-slate-400 font-medium flex items-center gap-1.5" id="statusBadge-{{ student.student_id }}">
+                    <i class="fa-regular fa-circle-xmark"></i> No Biometrics
+                </span>
+                {% endif %}
+
+                <div class="flex items-center space-x-2">
+                    <!-- Collect Face Dataset Trigger Button -->
+                    <button onclick="openCaptureModal('{{ student.student_id }}', '{{ student.name }}', {{ sample_count }})" 
+                            class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-lg transition-all flex items-center gap-1 shadow-sm">
+                        <i class="fa-solid fa-camera"></i>
+                        <span>Capture Face</span>
+                    </button>
+
+                    <!-- Delete Profile Form -->
+                    <form method="POST" action="{{ url_for('delete_student', student_id=student.student_id) }}" onsubmit="return confirm('Delete this student profile?');">
+                        <button type="submit" title="Delete Student" class="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition-colors">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<!-- ======================================================== -->
+<!-- LIVE WEBCAM FACE DATASET COLLECTOR MODAL                 -->
+<!-- ======================================================== -->
+<div id="captureModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
+        <!-- Modal Header -->
+        <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+            <div>
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-camera-retro text-emerald-600"></i> Smart Biometric Face Capture
+                </h3>
+                <p class="text-xs text-slate-500 mt-0.5">
+                    Student: <span id="modalTargetName" class="font-bold text-slate-800"></span> 
+                    (<span id="modalTargetId" class="font-mono font-bold text-emerald-700"></span>)
+                </p>
+            </div>
+            <button onclick="closeCaptureModal()" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <!-- 4 Guided Stage Pills -->
+        <div class="px-5 pt-3 pb-2 bg-slate-50/70 border-b border-slate-100 grid grid-cols-4 gap-1.5 text-[10px] text-center font-bold">
+            <div id="pillStage1" class="py-1.5 px-1 rounded-lg bg-emerald-600 text-white shadow-sm transition-all">
+                1. Frontal
+            </div>
+            <div id="pillStage2" class="py-1.5 px-1 rounded-lg bg-slate-200 text-slate-600 transition-all">
+                2. Left / Right
+            </div>
+            <div id="pillStage3" class="py-1.5 px-1 rounded-lg bg-slate-200 text-slate-600 transition-all">
+                3. Up / Down
+            </div>
+            <div id="pillStage4" class="py-1.5 px-1 rounded-lg bg-slate-200 text-slate-600 transition-all">
+                4. Expressions
+            </div>
+        </div>
+
+        <!-- Camera Viewport with Oval Target Guide -->
+        <div class="p-5 space-y-4">
+            <div class="relative w-full h-64 bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center border border-slate-800 shadow-inner">
+                <!-- Video Stream Element -->
+                <video id="captureVideo" autoplay playsinline muted 
+                       class="w-full h-full object-cover transform -scale-x-100"></video>
+
+                <!-- Hidden Canvas for frame snapshots -->
+                <canvas id="snapshotCanvas" width="640" height="480" class="hidden"></canvas>
+
+                <!-- Dynamic Face Oval Guide Overlay -->
+                <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div id="faceOvalGuide" class="w-40 h-52 border-2 border-dashed border-emerald-400/80 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center justify-center transition-all duration-300">
+                    </div>
+                </div>
+
+                <!-- Top HUD: Live Face Detection Status Badge -->
+                <div class="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+                    <span id="faceStatusBadge" class="px-3 py-1 rounded-full text-[11px] font-bold bg-slate-900/80 text-slate-300 border border-slate-700/80 backdrop-blur-md flex items-center gap-1.5 shadow">
+                        <span class="h-2 w-2 rounded-full bg-slate-400"></span> Awaiting Camera...
+                    </span>
+                    <span id="stageCounterPill" class="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-slate-900/80 text-emerald-400 border border-slate-700/80">
+                        Stage 1 / 4
+                    </span>
+                </div>
+
+                <!-- Camera Offline Placeholder -->
+                <div id="cameraOfflineMsg" class="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-slate-400 text-xs gap-2 hidden">
+                    <i class="fa-solid fa-video-slash text-2xl text-slate-500"></i>
+                    <span>Camera is starting or permission required...</span>
+                </div>
+            </div>
+
+            <!-- Dynamic Feedback & Instructions -->
+            <div class="text-center space-y-1 bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
+                <p id="stageTitle" class="text-xs font-bold text-emerald-700 uppercase tracking-wider">
+                    Stage 1: Frontal Neutral Face
+                </p>
+                <p id="captureInstructions" class="text-xs font-semibold text-slate-800">
+                    Look directly into the camera. Keep your face centered inside the green oval.
+                </p>
+                <p id="stageHelper" class="text-[11px] text-slate-400">
+                    Capturing 15 clear frontal angles with steady lighting.
+                </p>
+            </div>
+
+            <!-- Progress Meter -->
+            <div class="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div class="flex justify-between items-center text-xs">
+                    <span class="text-slate-500 font-semibold">Total Verified Photos</span>
+                    <span class="font-mono font-bold text-slate-900"><span id="progressCurrent">0</span> / 60 Photos (<span id="progressPctText">0%</span>)</span>
+                </div>
+                <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                    <div id="modalProgressBar" class="h-full bg-emerald-500 rounded-full transition-all duration-300" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Footer Actions -->
+        <div class="p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+            <button type="button" onclick="closeCaptureModal()" class="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900">
+                Close Window
+            </button>
+
+            <div class="flex items-center gap-2">
+                <button type="button" id="pauseResumeBtn" onclick="togglePauseCapture()" class="hidden px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all">
+                    <i class="fa-solid fa-pause mr-1"></i> Pause
+                </button>
+                <button type="button" id="startCaptureBtn" onclick="startPhotoCapture()" 
+                        class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-circle-play"></i>
+                    <span id="startBtnLabel">Start Guided Capture</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- ENROLL NEW STUDENT MODAL                                 -->
+<!-- ======================================================== -->
+<div id="enrollModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full p-6 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-user-plus text-emerald-600"></i> Enroll New Student
+            </h3>
+            <button onclick="document.getElementById('enrollModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-700">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="{{ url_for('add_student') }}" class="space-y-3.5">
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Student Roll Number / ID *</label>
+                <input type="text" name="student_id" placeholder="e.g. CS-007" required 
+                       class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
+                <input type="text" name="name" placeholder="e.g. Bilal Ahmed" required 
+                       class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500">
+            </div>
+
+            <!-- Dynamic Academic Class Dropdown -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Department / Academic Class *</label>
+                <select name="department" required 
+                        class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500">
+                    {% for cls in classes %}
+                    <option value="{{ cls.class_code }}">{{ cls.class_code }} - {{ cls.class_name }}</option>
+                    {% else %}
+                    <option value="BCS - 1A">BCS - 1A - Computer Science</option>
+                    <option value="BAI - 3B">BAI - 3B - Artificial Intelligence</option>
+                    <option value="BSE - 5A">BSE - 5A - Software Engineering</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Email Address</label>
+                <input type="email" name="email" placeholder="e.g. bilal@college.edu" 
+                       class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500">
+            </div>
+
+            <div class="pt-3 flex items-center justify-end space-x-3">
+                <button type="button" onclick="document.getElementById('enrollModal').classList.add('hidden')" 
+                        class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl">
+                    Cancel
+                </button>
+                <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20">
+                    Save Profile
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Audio Chime for Completion -->
+<audio id="datasetDoneSound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let activeStream = null;
+    let isCapturing = false;
+    let isPaused = false;
+    let currentStudentId = '';
+    let currentStudentName = '';
+    let targetCount = 60;
+    let currentCount = 0;
+    let captureLoopTimer = null;
+
+    // 4 Distinct Paced Biometric Stages (15 frames each)
+    const stages = [
+        {
+            stage: 1,
+            pillId: 'pillStage1',
+            title: 'Stage 1: Frontal Neutral Face (Photos 1 – 15)',
+            instruction: 'Look directly at the camera with a neutral expression.',
+            helper: 'Keep your face centered inside the green oval guide.'
+        },
+        {
+            stage: 2,
+            pillId: 'pillStage2',
+            title: 'Stage 2: Side Angles / Left & Right (Photos 16 – 30)',
+            instruction: 'Slowly turn your head slightly to the left, then slightly to the right.',
+            helper: 'Capturing ear-to-ear facial profile and cheekbone structure.'
+        },
+        {
+            stage: 3,
+            pillId: 'pillStage3',
+            title: 'Stage 3: Upper & Lower Tilt (Photos 31 – 45)',
+            instruction: 'Tilt your chin slightly upward, then slightly downward.',
+            helper: 'Capturing upper forehead, eyebrows, and lower jawline.'
+        },
+        {
+            stage: 4,
+            pillId: 'pillStage4',
+            title: 'Stage 4: Expressions & Natural Smile (Photos 46 – 60)',
+            instruction: 'Give a gentle natural smile and blink normally.',
+            helper: 'Recording dynamic facial expressions for robust recognition.'
+        }
+    ];
+
+    async function openCaptureModal(studentId, studentName, existingCount) {
+        currentStudentId = studentId;
+        currentStudentName = studentName;
+        currentCount = existingCount || 0;
+        isCapturing = false;
+        isPaused = false;
+
+        document.getElementById('modalTargetId').innerText = studentId;
+        document.getElementById('modalTargetName').innerText = studentName;
+        updateProgressDisplay();
+        updateStageUI(currentCount);
+
+        document.getElementById('captureModal').classList.remove('hidden');
+        document.getElementById('startCaptureBtn').disabled = false;
+        document.getElementById('startBtnLabel').innerText = currentCount >= targetCount ? "Re-Capture 60 Photos" : "Start Guided Capture";
+        document.getElementById('pauseResumeBtn').classList.add('hidden');
+
+        // Start HTML5 camera stream
+        try {
+            activeStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
+            });
+            const video = document.getElementById('captureVideo');
+            video.srcObject = activeStream;
+            document.getElementById('cameraOfflineMsg').classList.add('hidden');
+            setFaceStatus(true, "Camera Ready");
+        } catch (err) {
+            console.error("Camera access failed:", err);
+            document.getElementById('cameraOfflineMsg').classList.remove('hidden');
+            setFaceStatus(false, "Camera Offline");
+        }
+    }
+
+    function closeCaptureModal() {
+        stopLoop();
+        if (activeStream) {
+            activeStream.getTracks().forEach(track => track.stop());
+            activeStream = null;
+        }
+        document.getElementById('captureModal').classList.add('hidden');
+        isCapturing = false;
+        isPaused = false;
+    }
+
+    function setFaceStatus(detected, text) {
+        const badge = document.getElementById('faceStatusBadge');
+        const oval = document.getElementById('faceOvalGuide');
+        if (detected) {
+            badge.className = "px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 backdrop-blur-md flex items-center gap-1.5 shadow";
+            badge.innerHTML = `<span class="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span> ${text || 'Face In Focus'}`;
+            oval.className = "w-40 h-52 border-2 border-dashed border-emerald-400/90 rounded-full shadow-[0_0_25px_rgba(16,185,129,0.5)] flex items-center justify-center transition-all duration-300";
+        } else {
+            badge.className = "px-3 py-1 rounded-full text-[11px] font-bold bg-amber-950/80 text-amber-300 border border-amber-500/50 backdrop-blur-md flex items-center gap-1.5 shadow";
+            badge.innerHTML = `<span class="h-2 w-2 rounded-full bg-amber-400"></span> ${text || 'Adjust Inside Oval'}`;
+            oval.className = "w-40 h-52 border-2 border-dashed border-amber-400/90 rounded-full shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center justify-center transition-all duration-300";
+        }
+    }
+
+    function updateStageUI(count) {
+        let activeIdx = 0;
+        if (count >= 45) activeIdx = 3;
+        else if (count >= 30) activeIdx = 2;
+        else if (count >= 15) activeIdx = 1;
+        else activeIdx = 0;
+
+        const st = stages[activeIdx];
+        document.getElementById('stageTitle').innerText = st.title;
+        document.getElementById('captureInstructions').innerText = st.instruction;
+        document.getElementById('stageHelper').innerText = st.helper;
+        document.getElementById('stageCounterPill').innerText = `Stage ${st.stage} / 4`;
+
+        // Update pills
+        ['pillStage1', 'pillStage2', 'pillStage3', 'pillStage4'].forEach((id, idx) => {
+            const el = document.getElementById(id);
+            if (idx === activeIdx) {
+                el.className = "py-1.5 px-1 rounded-lg bg-emerald-600 text-white shadow-md font-extrabold ring-2 ring-emerald-300";
+            } else if (idx < activeIdx) {
+                el.className = "py-1.5 px-1 rounded-lg bg-emerald-100 text-emerald-800 font-bold";
+            } else {
+                el.className = "py-1.5 px-1 rounded-lg bg-slate-200 text-slate-500";
+            }
+        });
+    }
+
+    function updateProgressDisplay() {
+        document.getElementById('progressCurrent').innerText = currentCount;
+        const pct = Math.min(100, Math.round((currentCount / targetCount) * 100));
+        document.getElementById('progressPctText').innerText = `${pct}%`;
+        document.getElementById('modalProgressBar').style.width = `${pct}%`;
+    }
+
+    function togglePauseCapture() {
+        isPaused = !isPaused;
+        const btn = document.getElementById('pauseResumeBtn');
+        if (isPaused) {
+            btn.innerHTML = `<i class="fa-solid fa-play mr-1"></i> Resume`;
+            btn.className = "px-4 py-2.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold rounded-xl transition-all";
+            setFaceStatus(false, "Capture Paused");
+        } else {
+            btn.innerHTML = `<i class="fa-solid fa-pause mr-1"></i> Pause`;
+            btn.className = "px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all";
+            runCaptureLoop();
+        }
+    }
+
+    function stopLoop() {
+        if (captureLoopTimer) {
+            clearTimeout(captureLoopTimer);
+            captureLoopTimer = null;
+        }
+    }
+
+    async function startPhotoCapture() {
+        if (isCapturing) return;
+
+        // If re-capturing existing 60 photos, clear backend folder first
+        if (currentCount >= targetCount) {
+            await fetch(`/api/dataset/clear/${currentStudentId}`, { method: 'POST' });
+            currentCount = 0;
+            updateProgressDisplay();
+            updateStageUI(0);
+        }
+
+        isCapturing = true;
+        isPaused = false;
+        document.getElementById('startCaptureBtn').disabled = true;
+        document.getElementById('startBtnLabel').innerText = "Capturing...";
+        document.getElementById('pauseResumeBtn').classList.remove('hidden');
+
+        runCaptureLoop();
+    }
+
+    async function runCaptureLoop() {
+        if (!isCapturing || isPaused) return;
+
+        if (currentCount >= targetCount) {
+            finishCapture();
+            return;
+        }
+
+        const video = document.getElementById('captureVideo');
+        const canvas = document.getElementById('snapshotCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Draw current video frame to canvas
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.90);
+
+        try {
+            const response = await fetch('/api/dataset/save_sample', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    student_id: currentStudentId,
+                    student_name: currentStudentName,
+                    image_data: dataUrl
+                })
+            });
+            const res = await response.json();
+
+            if (res.success && res.face_detected) {
+                currentCount = res.count;
+                updateProgressDisplay();
+                updateStageUI(currentCount);
+                setFaceStatus(true, `Photo ${currentCount}/60 Saved`);
+            } else {
+                setFaceStatus(false, res.error || "No Face in Focus");
+            }
+        } catch (e) {
+            console.error("Frame capture error:", e);
+        }
+
+        // Paced interval: 450ms between verified frames
+        // This gives ~25-30 comfortable seconds to move smoothly through frontal, side, up, down, and smile!
+        if (isCapturing && !isPaused && currentCount < targetCount) {
+            captureLoopTimer = setTimeout(runCaptureLoop, 450);
+        } else if (currentCount >= targetCount) {
+            finishCapture();
+        }
+    }
+
+    function finishCapture() {
+        stopLoop();
+        isCapturing = false;
+        isPaused = false;
+
+        // Completion Audio Chime
+        const sound = document.getElementById('datasetDoneSound');
+        if (sound) sound.play().catch(() => {});
+
+        document.getElementById('stageTitle').innerText = "🎉 All 60 Biometric Photos Verified & Saved!";
+        document.getElementById('captureInstructions').innerHTML = 
+            `<span class="text-emerald-700 font-bold">Frontal, side angles, upper/lower tilt, and expressions saved in dataset/${currentStudentId}_${currentStudentName.replace(/ /g, '_')}!</span>`;
+        document.getElementById('stageHelper').innerText = "This student is now ready for deep learning model training.";
+
+        document.getElementById('startBtnLabel').innerText = "Re-Capture";
+        document.getElementById('startCaptureBtn').disabled = false;
+        document.getElementById('pauseResumeBtn').classList.add('hidden');
+        setFaceStatus(true, "Dataset Complete (60/60)");
+
+        // Update badge in students list
+        const badge = document.getElementById(`statusBadge-${currentStudentId}`);
+        if (badge) {
+            badge.className = "text-emerald-600 font-bold flex items-center gap-1.5";
+            badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> 60 Samples Ready`;
+        }
+    }
+</script>
+{% endblock %}

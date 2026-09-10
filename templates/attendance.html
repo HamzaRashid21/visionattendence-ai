@@ -1,0 +1,486 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Management{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ====================================================================== -->
+    <!-- Top Header & Single Clean Mode Switcher                                -->
+    <!-- ====================================================================== -->
+    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
+        <div>
+            <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Attendance Management</h1>
+            <p class="text-xs text-slate-500 mt-0.5">Mark daily attendance manually or launch AI face recognition scanner</p>
+        </div>
+
+        <!-- Single Clean Switcher: Table Sheet vs Face Recognition -->
+        <div class="flex items-center gap-2.5 w-full md:w-auto">
+            <button id="tabTableBtn" onclick="switchView('table')" 
+                    class="flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-md shadow-emerald-600/20">
+                <i class="fa-solid fa-table-list"></i> Table Sheet
+            </button>
+
+            <button id="tabCameraBtn" onclick="switchView('camera')" 
+                    class="flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm hover:border-emerald-300">
+                <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <i class="fa-solid fa-camera"></i> Face Recognition
+            </button>
+        </div>
+    </div>
+
+    <!-- ====================================================================== -->
+    <!-- VIEW 1: TABLE FORMAT (Manual Attendance & Interactive Filter)          -->
+    <!-- ====================================================================== -->
+    <div id="tableView" class="space-y-5">
+
+        <!-- Filter Bar with Functional Class Dropdown, Interactive Date Picker & Search -->
+        <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-3 text-xs">
+                <!-- Interactive Date Selector -->
+                <div class="flex items-center gap-2">
+                    <label for="attendanceDatePicker" class="font-semibold text-slate-500">Date:</label>
+                    <input type="date" id="attendanceDatePicker" value="{{ selected_date_str }}" 
+                           onchange="window.location.href='{{ url_for('attendance') }}?date=' + this.value"
+                           class="bg-slate-100 hover:bg-slate-200/80 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-sm">
+                    {% if not is_today %}
+                    <a href="{{ url_for('attendance') }}" title="Back to Today"
+                       class="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 transition-all">
+                        <i class="fa-solid fa-rotate-left text-[10px]"></i> Today
+                    </a>
+                    {% endif %}
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-500 font-semibold">Filter Class:</span>
+                    <!-- Functional Class Dropdown -->
+                    <select id="classFilterSelect" onchange="filterTableByClass(this.value)" 
+                            class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer">
+                        <option value="ALL">All Classes (Show All)</option>
+                        {% for c in classes %}
+                        <option value="{{ c.class_code }}">{{ c.class_code }} - {{ c.class_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Single Action: Mark All Present for Selected Date -->
+            <div class="flex items-center space-x-2">
+                <form method="POST" action="{{ url_for('mark_all_manual', status='Present', date=selected_date_str) }}">
+                    <button type="submit" class="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-check-double text-[11px]"></i> Mark All Present
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Attendance Sheet Table -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs min-w-[650px]" id="attendanceTable">
+                    <thead>
+                        <tr class="text-slate-400 font-semibold bg-slate-50/60 border-b border-slate-100">
+                            <th class="py-3 px-4">#</th>
+                            <th class="py-3 px-4">Student</th>
+                            <th class="py-3 px-4">Roll No</th>
+                            <th class="py-3 px-4">Class</th>
+                            <th class="py-3 px-4">In-Time</th>
+                            <th class="py-3 px-4">Out-Time</th>
+                            <th class="py-3 px-4">Status</th>
+                            <th class="py-3 px-4 text-center">Manual Override Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 text-slate-700" id="attendanceTbody">
+                        {% for item in student_attendance_list %}
+                        <tr class="attendance-row hover:bg-slate-50/70 transition-colors" data-class="{{ item.department }}">
+                            <td class="py-3.5 px-4 text-slate-400 font-medium row-index">{{ loop.index }}</td>
+                            <td class="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2.5">
+                                <span class="h-7 w-7 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center text-xs font-bold">{{ item.name[0] }}</span>
+                                <span class="student-name-text">{{ item.name }}</span>
+                            </td>
+                            <td class="py-3.5 px-4 font-mono text-slate-600 font-bold">{{ item.student_id }}</td>
+                            <td class="py-3.5 px-4 text-slate-600 font-semibold class-cell">{{ item.department }}</td>
+                            <td class="py-3.5 px-4 font-mono text-slate-800">{{ item.in_time or '--' }}</td>
+                            <td class="py-3.5 px-4 font-mono text-slate-800">{{ item.out_time or '--' }}</td>
+                            <td class="py-3.5 px-4">
+                                {% if item.status == 'Present' %}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                    Present
+                                </span>
+                                {% elif item.status == 'Late' %}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
+                                    Late
+                                </span>
+                                {% else %}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                                    Absent
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3.5 px-4 text-center">
+                                <!-- Manual Toggle Buttons -->
+                                <div class="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 space-x-0.5">
+                                    <form method="POST" action="{{ url_for('manual_mark_student', student_id=item.student_id, status='Present', date=selected_date_str) }}" class="inline">
+                                        <button type="submit" title="Mark Present" 
+                                                class="px-2 py-1 rounded text-[10px] font-bold transition-colors {% if item.status == 'Present' %}bg-emerald-600 text-white shadow-sm{% else %}text-slate-500 hover:text-emerald-600 hover:bg-emerald-50{% endif %}">
+                                            P
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('manual_mark_student', student_id=item.student_id, status='Late', date=selected_date_str) }}" class="inline">
+                                        <button type="submit" title="Mark Late" 
+                                                class="px-2 py-1 rounded text-[10px] font-bold transition-colors {% if item.status == 'Late' %}bg-amber-500 text-white shadow-sm{% else %}text-slate-500 hover:text-amber-600 hover:bg-amber-50{% endif %}">
+                                            L
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('manual_mark_student', student_id=item.student_id, status='Absent', date=selected_date_str) }}" class="inline">
+                                        <button type="submit" title="Mark Absent" 
+                                                class="px-2 py-1 rounded text-[10px] font-bold transition-colors {% if item.status == 'Absent' %}bg-rose-500 text-white shadow-sm{% else %}text-slate-500 hover:text-rose-600 hover:bg-rose-50{% endif %}">
+                                            A
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="noMatchMessage" class="hidden py-8 text-center text-xs text-slate-400">
+                No students found matching the selected class filter.
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ====================================================================== -->
+    <!-- VIEW 2: LIVE FACE RECOGNITION SCANNER                                 -->
+    <!-- ====================================================================== -->
+    <div id="cameraView" class="hidden space-y-6">
+
+        <!-- Top Banner with Return Button -->
+        <div class="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-lg flex-shrink-0 shadow-sm">
+                    <i class="fa-solid fa-camera"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold text-slate-900">Live AI Facial Recognition Mode</h3>
+                    <p class="text-xs text-slate-500">Camera is active. Stand in front of lens for instant automatic presence logging.</p>
+                </div>
+            </div>
+            <button onclick="switchView('table')" class="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 shadow-sm flex items-center gap-1.5 transition-all">
+                <i class="fa-solid fa-arrow-left"></i> Back to Table Sheet
+            </button>
+        </div>
+
+        <!-- Camera & Recognition Box Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left: Live Video Feed (7 Cols) -->
+            <div class="lg:col-span-7 bg-white rounded-3xl p-4 sm:p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-video text-emerald-600"></i> Entrance Camera Stream
+                    </h3>
+                    <div class="flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 rounded-lg px-2.5 py-1">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span class="text-[11px] font-bold text-emerald-700">Camera Online</span>
+                    </div>
+                </div>
+
+                <!-- Video Frame Container (Large on Mobile, 16:9 on Desktop) -->
+                <div class="relative h-[50vh] sm:h-auto sm:aspect-video bg-slate-950 rounded-2xl overflow-hidden border border-slate-700/80 shadow-inner flex items-center justify-center">
+                    <img id="cameraStream" src="" 
+                         alt="Live AI Scanner" 
+                         class="w-full h-full object-cover hidden"
+                         onload="this.classList.remove('hidden'); document.getElementById('cam-loading-box').classList.add('hidden');"
+                         onerror="this.classList.add('hidden'); document.getElementById('cam-error-box').classList.remove('hidden');" />
+
+                    <div id="cam-loading-box" class="flex flex-col items-center justify-center text-slate-400 text-center p-6">
+                        <i class="fa-solid fa-spinner fa-spin text-3xl text-emerald-500 mb-2"></i>
+                        <h4 class="text-sm font-semibold text-white">Starting Camera Stream...</h4>
+                        <p class="text-xs text-slate-400 mt-1">Acquiring 30 FPS optical sensor...</p>
+                    </div>
+
+                    <div id="cam-error-box" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white text-center p-6">
+                        <i class="fa-solid fa-video-slash text-3xl text-slate-500 mb-2"></i>
+                        <h4 class="text-sm font-semibold">Webcam Not Available</h4>
+                        <p class="text-xs text-slate-400 mt-1 max-w-xs">Webcam is busy with another application or permissions are blocked.</p>
+                    </div>
+
+                    <!-- Reticle on Scanner -->
+                    <div class="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
+                        <div class="w-48 h-56 sm:w-64 sm:h-72 max-w-[80%] max-h-[80%] rounded-3xl border-2 border-emerald-400/40 border-dashed flex flex-col justify-between p-2.5">
+                            <div class="flex justify-between">
+                                <div class="w-4 h-4 border-t-2 border-l-2 border-emerald-400"></div>
+                                <div class="w-4 h-4 border-t-2 border-r-2 border-emerald-400"></div>
+                            </div>
+                            <div class="flex justify-between">
+                                <div class="w-4 h-4 border-b-2 border-l-2 border-emerald-400"></div>
+                                <div class="w-4 h-4 border-b-2 border-r-2 border-emerald-400"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="scanner-laser"></div>
+                </div>
+
+                <div class="mt-3 flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-slate-400 gap-1 px-1 text-center sm:text-left">
+                    <span><i class="fa-solid fa-shield-halved text-emerald-600 mr-1"></i> Anti-Proxy Liveness Active</span>
+                    <span class="font-mono text-emerald-600 font-semibold">Match Threshold: &ge; 80%</span>
+                </div>
+            </div>
+
+            <!-- Right: Dynamic Biometric Status Card (5 Cols) -->
+            <div class="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col justify-between min-h-[380px]">
+                
+                <!-- STATE 1: IDLE / SCANNING RADAR (Active by default) -->
+                <div id="recogIdleState" class="flex flex-col items-center justify-center text-center py-8 px-4 space-y-4 my-auto">
+                    <div class="relative flex items-center justify-center">
+                        <span class="absolute -inset-3 rounded-full bg-emerald-500/15 animate-ping"></span>
+                        <div class="h-20 w-20 rounded-2xl bg-emerald-50 border-2 border-emerald-300/80 flex items-center justify-center text-emerald-600 text-3xl shadow-lg shadow-emerald-500/10">
+                            <i class="fa-solid fa-face-viewfinder animate-pulse"></i>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <span class="relative flex h-2 w-2">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                            Optical Sensor Active
+                        </div>
+                        <h4 class="text-base font-bold text-slate-800 pt-1">Awaiting Face Recognition</h4>
+                        <p class="text-xs text-slate-500 max-w-xs leading-relaxed mx-auto">
+                            Please look directly at the entrance camera. Once your face matches, attendance will mark automatically.
+                        </p>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-100 w-full flex items-center justify-around text-[11px] text-slate-400">
+                        <span class="flex items-center gap-1"><i class="fa-solid fa-bolt text-emerald-600"></i> &lt; 15ms Latency</span>
+                        <span class="flex items-center gap-1"><i class="fa-solid fa-shield-halved text-emerald-600"></i> Anti-Spoof Active</span>
+                    </div>
+                </div>
+
+                <!-- STATE 2: VERIFIED & ATTENDANCE MARKED (Hidden until face match) -->
+                <div id="recogActiveState" class="hidden flex flex-col justify-between h-full space-y-4">
+                    <div>
+                        <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+                            <div class="flex items-center space-x-3">
+                                <div class="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-lg flex-shrink-0 shadow-md shadow-emerald-600/20">
+                                    <i class="fa-solid fa-check"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-900">Student Verified</h3>
+                                    <p class="text-[11px] text-emerald-600 font-semibold" id="recogMatchBadge">Biometric Match Confirmed</p>
+                                </div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                Present
+                            </span>
+                        </div>
+
+                        <div class="py-4 space-y-3 text-xs">
+                            <div class="flex items-center justify-between py-1.5 border-b border-slate-50">
+                                <span class="text-slate-400 font-medium">Student Name:</span>
+                                <span id="recogName" class="font-bold text-slate-900 text-sm">--</span>
+                            </div>
+                            <div class="flex items-center justify-between py-1.5 border-b border-slate-50">
+                                <span class="text-slate-400 font-medium">Roll Number:</span>
+                                <span id="recogRoll" class="font-mono font-bold text-slate-800 text-xs">--</span>
+                            </div>
+                            <div class="flex items-center justify-between py-1.5 border-b border-slate-50">
+                                <span class="text-slate-400 font-medium">Class / Dept:</span>
+                                <span id="recogClass" class="font-semibold text-slate-800">--</span>
+                            </div>
+                            <div class="flex items-center justify-between py-1.5 border-b border-slate-50">
+                                <span class="text-slate-400 font-medium">Logged In-Time:</span>
+                                <span id="recogTime" class="font-mono font-bold text-emerald-600 text-xs">--</span>
+                            </div>
+                            <div class="flex items-center justify-between py-1">
+                                <span class="text-slate-400 font-medium">Verification Mode:</span>
+                                <span class="font-semibold text-slate-700 flex items-center gap-1">
+                                    <i class="fa-solid fa-face-smile text-emerald-500"></i> AI Facial Biometric
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div id="recogBanner" class="w-full py-2.5 px-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold flex items-center justify-center space-x-2 shadow-sm">
+                            <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i>
+                            <span>Attendance Logged in Database</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-3">
+                            <div id="recogProgressBar" class="bg-emerald-500 h-full w-full transition-all duration-[3000ms] ease-linear"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <audio id="successChime" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pollInterval = null;
+let revertTimeout = null;
+let lastSeenStudentId = null;
+const VIDEO_STREAM_URL = "{{ url_for('video_feed') }}";
+
+// Dynamic Client-side Class Filter Function
+function filterTableByClass(selectedClass) {
+    const rows = document.querySelectorAll('.attendance-row');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const rowClass = row.getAttribute('data-class') || '';
+        if (selectedClass === 'ALL' || rowClass.trim().toLowerCase() === selectedClass.trim().toLowerCase()) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    const noMatch = document.getElementById('noMatchMessage');
+    if (visibleCount === 0) {
+        noMatch.classList.remove('hidden');
+    } else {
+        noMatch.classList.add('hidden');
+    }
+}
+
+// Toggle between Table View and Face Recognition Camera View
+function switchView(mode) {
+    const tableDiv = document.getElementById('tableView');
+    const cameraDiv = document.getElementById('cameraView');
+    const tabTableBtn = document.getElementById('tabTableBtn');
+    const tabCameraBtn = document.getElementById('tabCameraBtn');
+    const cameraStreamImg = document.getElementById('cameraStream');
+    const camLoadingBox = document.getElementById('cam-loading-box');
+    const camErrorBox = document.getElementById('cam-error-box');
+    const idleBox = document.getElementById('recogIdleState');
+    const activeBox = document.getElementById('recogActiveState');
+
+    if (mode === 'camera') {
+        tableDiv.classList.add('hidden');
+        cameraDiv.classList.remove('hidden');
+
+        tabCameraBtn.className = "flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-md shadow-emerald-600/20";
+        tabTableBtn.className = "flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm";
+
+        // Reset recognition card to idle scanning state
+        idleBox.classList.remove('hidden');
+        activeBox.classList.add('hidden');
+
+        camErrorBox.classList.add('hidden');
+        camLoadingBox.classList.remove('hidden');
+        cameraStreamImg.src = VIDEO_STREAM_URL + '?t=' + Date.now();
+
+        startPolling();
+    } else {
+        cameraDiv.classList.add('hidden');
+        tableDiv.classList.remove('hidden');
+
+        tabTableBtn.className = "flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-md shadow-emerald-600/20";
+        tabCameraBtn.className = "flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm hover:border-emerald-300";
+
+        cameraStreamImg.src = "";
+        cameraStreamImg.classList.add('hidden');
+        stopPolling();
+    }
+}
+
+// Live Face Recognition Polling
+function pollFaceRecognition() {
+    fetch('/api/live_recognition_status')
+        .then(res => res.json())
+        .then(data => {
+            const idleBox = document.getElementById('recogIdleState');
+            const activeBox = document.getElementById('recogActiveState');
+            const pBar = document.getElementById('recogProgressBar');
+
+            if (data.active && data.student_id) {
+                document.getElementById('recogName').innerText = data.name || data.student_id;
+                document.getElementById('recogRoll').innerText = data.student_id;
+                document.getElementById('recogClass').innerText = data.department || 'BCS - 1A';
+                document.getElementById('recogTime').innerText = data.in_time || 'Just now';
+                
+                if (data.confidence) {
+                    document.getElementById('recogMatchBadge').innerText = `${data.confidence}% Biometric Match`;
+                }
+
+                // Show active verification card, hide idle radar
+                idleBox.classList.add('hidden');
+                activeBox.classList.remove('hidden');
+
+                // Animate progress bar
+                pBar.style.width = '100%';
+                setTimeout(() => { pBar.style.width = '0%'; }, 50);
+
+                // Play chime on new student detection
+                if (lastSeenStudentId !== data.student_id) {
+                    lastSeenStudentId = data.student_id;
+                    const sound = document.getElementById('successChime');
+                    if (sound) sound.play().catch(() => {});
+
+                    // Update corresponding row in Table Sheet
+                    updateTableRow(data.student_id, data.in_time);
+                }
+
+                // Revert to idle radar after 3.2 seconds
+                if (revertTimeout) clearTimeout(revertTimeout);
+                revertTimeout = setTimeout(() => {
+                    activeBox.classList.add('hidden');
+                    idleBox.classList.remove('hidden');
+                    lastSeenStudentId = null;
+                }, 3200);
+            }
+        })
+        .catch(e => console.log(e));
+}
+
+// Update table row in real-time when scanned
+function updateTableRow(studentId, inTime) {
+    const rows = document.querySelectorAll('.attendance-row');
+    rows.forEach(row => {
+        const rollCell = row.querySelector('td.font-mono');
+        if (rollCell && rollCell.innerText.trim() === studentId) {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 7) {
+                cells[4].innerText = inTime || 'Just now';
+                cells[6].innerHTML = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">Present</span>`;
+            }
+        }
+    });
+}
+
+function startPolling() {
+    if (!pollInterval) {
+        pollInterval = setInterval(pollFaceRecognition, 1000);
+    }
+}
+
+function stopPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard{% endblock %} - VisionAttend AI</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        sidebarBg: '#090D16',
+                        sidebarActive: '#059669', // Sophisticated Emerald
+                        sidebarHover: '#131A29',
+                        mainBg: '#F8FAFC',
+                        brand: {
+                            50: '#ECFDF5',
+                            100: '#D1FAE5',
+                            500: '#10B981',
+                            600: '#059669',
+                            700: '#047857',
+                            900: '#064E3B'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Font Awesome 6 Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body class="bg-[#F8FAFC] text-slate-800 font-sans antialiased min-h-screen flex flex-col md:flex-row relative">
+
+    <!-- Mobile Backdrop Overlay -->
+    <div id="mobileBackdrop" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 md:hidden" onclick="toggleMobileSidebar()"></div>
+
+    <!-- ======================================================== -->
+    <!-- SIDEBAR (Executive Obsidian & Emerald Theme)             -->
+    <!-- ======================================================== -->
+    <aside id="mainSidebar" 
+           class="fixed inset-y-0 left-0 z-50 w-64 bg-[#090D16] text-slate-300 flex flex-col justify-between p-5 border-r border-slate-800/80 transform -translate-x-full md:translate-x-0 md:static md:h-screen md:sticky top-0 transition-transform duration-300 ease-in-out overflow-y-auto">
+        <div>
+            <!-- Top Branding & Mobile Close Button -->
+            <div class="flex items-center justify-between mb-8 px-2">
+                <div class="flex items-center space-x-3">
+                    <div class="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xl shadow-lg shadow-emerald-500/10">
+                        <i class="fa-solid fa-face-smile"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-base font-bold text-white tracking-tight leading-tight">VisionAttend</h1>
+                        <p class="text-[11px] text-emerald-400 font-semibold tracking-wider uppercase">Enterprise AI</p>
+                    </div>
+                </div>
+                <!-- Close Button (Mobile Only) -->
+                <button onclick="toggleMobileSidebar()" class="text-slate-400 hover:text-white md:hidden p-1.5 rounded-lg hover:bg-slate-800">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Navigation Links (Emerald Active Highlights) -->
+            <nav class="space-y-1.5">
+                <!-- Dashboard -->
+                <a href="{{ url_for('dashboard') }}" 
+                   class="flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all {% if active_page == 'dashboard' %}bg-emerald-600 text-white shadow-lg shadow-emerald-600/20{% else %}text-slate-400 hover:bg-[#131A29] hover:text-white{% endif %}">
+                    <i class="fa-solid fa-house w-5 text-base mr-3 {% if active_page == 'dashboard' %}text-white{% else %}text-slate-400{% endif %}"></i>
+                    Dashboard
+                </a>
+
+                <!-- Attendance -->
+                <a href="{{ url_for('attendance') }}" 
+                   class="flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all {% if active_page == 'attendance' %}bg-emerald-600 text-white shadow-lg shadow-emerald-600/20{% else %}text-slate-400 hover:bg-[#131A29] hover:text-white{% endif %}">
+                    <i class="fa-solid fa-calendar-check w-5 text-base mr-3 {% if active_page == 'attendance' %}text-white{% else %}text-slate-400{% endif %}"></i>
+                    Attendance
+                </a>
+
+                <!-- Students -->
+                <a href="{{ url_for('students') }}" 
+                   class="flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all {% if active_page == 'students' %}bg-emerald-600 text-white shadow-lg shadow-emerald-600/20{% else %}text-slate-400 hover:bg-[#131A29] hover:text-white{% endif %}">
+                    <i class="fa-solid fa-user-graduate w-5 text-base mr-3 {% if active_page == 'students' %}text-white{% else %}text-slate-400{% endif %}"></i>
+                    Students
+                </a>
+
+                <!-- Classes -->
+                <a href="{{ url_for('classes') }}" 
+                   class="flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all {% if active_page == 'classes' %}bg-emerald-600 text-white shadow-lg shadow-emerald-600/20{% else %}text-slate-400 hover:bg-[#131A29] hover:text-white{% endif %}">
+                    <i class="fa-solid fa-book-open w-5 text-base mr-3 {% if active_page == 'classes' %}text-white{% else %}text-slate-400{% endif %}"></i>
+                    Classes
+                </a>
+
+                <!-- Reports -->
+                <a href="{{ url_for('reports') }}" 
+                   class="flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all {% if active_page == 'reports' %}bg-emerald-600 text-white shadow-lg shadow-emerald-600/20{% else %}text-slate-400 hover:bg-[#131A29] hover:text-white{% endif %}">
+                    <i class="fa-solid fa-chart-column w-5 text-base mr-3 {% if active_page == 'reports' %}text-white{% else %}text-slate-400{% endif %}"></i>
+                    Reports
+                </a>
+
+                <!-- Face Database -->
+                <a href="{{ url_for('face_database') }}" 
+                   class="flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all {% if active_page == 'face_database' %}bg-emerald-600 text-white shadow-lg shadow-emerald-600/20{% else %}text-slate-400 hover:bg-[#131A29] hover:text-white{% endif %}">
+                    <i class="fa-solid fa-id-card-clip w-5 text-base mr-3 {% if active_page == 'face_database' %}text-white{% else %}text-slate-400{% endif %}"></i>
+                    Face Database
+                </a>
+
+
+                <!-- Settings -->
+                <a href="{{ url_for('settings') }}" 
+                   class="flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all {% if active_page == 'settings' %}bg-emerald-600 text-white shadow-lg shadow-emerald-600/20{% else %}text-slate-400 hover:bg-[#131A29] hover:text-white{% endif %}">
+                    <i class="fa-solid fa-gear w-5 text-base mr-3 {% if active_page == 'settings' %}text-white{% else %}text-slate-400{% endif %}"></i>
+                    Settings
+                </a>
+            </nav>
+        </div>
+
+        <!-- Bottom Sidebar Badge -->
+        <div class="mt-8 bg-[#131A29] rounded-2xl p-3.5 border border-slate-800 flex items-center space-x-3 shadow-sm">
+            <div class="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-lg flex-shrink-0">
+                <i class="fa-solid fa-camera-rotate"></i>
+            </div>
+            <div>
+                <h4 class="text-xs font-bold text-white">Smart Attendance</h4>
+                <p class="text-[11px] text-slate-400">Using Face Recognition</p>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ======================================================== -->
+    <!-- MAIN CONTENT AREA                                        -->
+    <!-- ======================================================== -->
+    <div class="flex-1 flex flex-col min-w-0 bg-[#F8FAFC]">
+
+        <!-- Top Header Bar -->
+        <header class="h-16 sm:h-20 bg-white border-b border-slate-200/80 px-3 sm:px-8 flex items-center justify-between sticky top-0 z-30">
+            <!-- Left: Mobile Hamburger & Search Bar -->
+            <div class="flex items-center space-x-3 sm:space-x-4 flex-1">
+                <button onclick="toggleMobileSidebar()" class="md:hidden p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100">
+                    <i class="fa-solid fa-bars text-lg"></i>
+                </button>
+
+                <form action="{{ url_for('students') }}" method="GET" class="relative w-full max-w-xs sm:max-w-md">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input type="text" name="q" value="{{ search_query or '' }}" placeholder="Search students, classes, or roll no..." 
+                           class="w-full bg-[#F1F5F9] border border-transparent focus:border-emerald-300 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                </form>
+            </div>
+
+            <!-- Header Right: Kiosk Mode, Notification & Profile -->
+            <div class="flex items-center space-x-2 sm:space-x-4 relative">
+                <!-- Whitelisted Kiosk Button -->
+                <a href="{{ url_for('kiosk') }}" title="Open Entrance Kiosk (No Login Required)" 
+                   class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl transition-all shadow-sm">
+                    <span class="relative flex h-2 w-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>Kiosk Mode</span>
+                </a>
+
+                <!-- Working Notification Bell & Dropdown Trigger -->
+                <div class="relative">
+                    <button id="notifBellBtn" onclick="toggleNotifications()" 
+                            class="relative p-2.5 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors focus:outline-none">
+                        <i class="fa-regular fa-bell text-lg"></i>
+                        <span id="notifBadge" class="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white"></span>
+                    </button>
+
+                    <!-- Interactive Notifications Dropdown Menu -->
+                    <div id="notifDropdown" class="hidden absolute right-0 mt-3 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 py-3 z-50">
+                        <div class="px-4 pb-3 border-b border-slate-100 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <h4 class="text-xs font-bold text-slate-900">Attendance Notifications</h4>
+                                <span id="notifCountPill" class="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">Live</span>
+                            </div>
+                            <button onclick="loadNotifications()" class="text-slate-400 hover:text-emerald-600 text-xs" title="Refresh">
+                                <i class="fa-solid fa-arrows-rotate"></i>
+                            </button>
+                        </div>
+
+                        <!-- Notification Items Container -->
+                        <div id="notifListContainer" class="max-h-72 overflow-y-auto divide-y divide-slate-50">
+                            <div class="py-6 text-center text-xs text-slate-400">Loading recent updates...</div>
+                        </div>
+
+                        <div class="pt-2.5 px-4 border-t border-slate-100 text-center">
+                            <a href="{{ url_for('reports') }}" class="text-[11px] text-emerald-600 hover:text-emerald-700 font-bold">
+                                View Full Attendance Log &rarr;
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Profile Card -->
+                <div class="flex items-center space-x-2.5 sm:space-x-3 pl-2 sm:pl-4 border-l border-slate-200">
+                    <div class="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-sm flex-shrink-0">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                    <div class="hidden sm:block">
+                        <h4 class="text-xs font-bold text-slate-900 leading-tight">{{ session.get('username', 'Admin') }}</h4>
+                        <p class="text-[11px] text-slate-500 capitalize">{{ session.get('role', 'Administrator') }}</p>
+                    </div>
+                </div>
+
+                <!-- Logout -->
+                <a href="{{ url_for('logout') }}" title="Sign Out" 
+                   class="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors">
+                    <i class="fa-solid fa-right-from-bracket text-base"></i>
+                </a>
+            </div>
+        </header>
+
+        <!-- Main Body Container -->
+        <main class="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="mb-6 space-y-2">
+                        {% for category, message in messages %}
+                            <div class="p-4 rounded-xl flex items-center justify-between border {% if category == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800{% elif category == 'error' %}bg-rose-50 border-rose-200 text-rose-800{% else %}bg-slate-100 border-slate-200 text-slate-800{% endif %}">
+                                <span class="text-xs font-semibold"><i class="fa-solid fa-info-circle mr-2"></i> {{ message }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+
+    </div>
+
+    <!-- Scripts: Mobile Drawer & Working Notifications Dropdown -->
+    <script>
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('mainSidebar');
+            const backdrop = document.getElementById('mobileBackdrop');
+            if (sidebar.classList.contains('-translate-x-full')) {
+                sidebar.classList.remove('-translate-x-full');
+                backdrop.classList.remove('hidden');
+            } else {
+                sidebar.classList.add('-translate-x-full');
+                backdrop.classList.add('hidden');
+            }
+        }
+
+        // Notification Dropdown Toggle & Data Fetching
+        function toggleNotifications() {
+            const dropdown = document.getElementById('notifDropdown');
+            dropdown.classList.toggle('hidden');
+            if (!dropdown.classList.contains('hidden')) {
+                loadNotifications();
+            }
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const bell = document.getElementById('notifBellBtn');
+            const dropdown = document.getElementById('notifDropdown');
+            if (dropdown && !dropdown.contains(e.target) && !bell.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+
+        function loadNotifications() {
+            const container = document.getElementById('notifListContainer');
+            fetch('/api/notifications')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.notifications && data.notifications.length > 0) {
+                        let html = '';
+                        data.notifications.forEach(item => {
+                            const icon = item.type === 'warning' 
+                                ? '<i class="fa-solid fa-triangle-exclamation text-amber-500"></i>' 
+                                : '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
+                            const bg = item.type === 'warning' ? 'bg-amber-50' : 'bg-emerald-50';
+                            
+                            html += `
+                                <div class="px-4 py-3 hover:bg-slate-50 transition-colors flex items-start space-x-3">
+                                    <div class="h-7 w-7 rounded-full ${bg} flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
+                                        ${icon}
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-bold text-slate-800 truncate">${item.title}</p>
+                                        <p class="text-[10px] text-slate-400 mt-0.5">${item.meta}</p>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        container.innerHTML = html;
+                    } else {
+                        container.innerHTML = '<div class="py-6 text-center text-xs text-slate-400">No new notifications today.</div>';
+                    }
+                })
+                .catch(() => {
+                    container.innerHTML = '<div class="py-4 text-center text-xs text-slate-400">Unable to load updates.</div>';
+                });
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
