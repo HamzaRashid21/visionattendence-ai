@@ -1,2 +1,8 @@
 [phases.setup]
-nixPkgs = ["libglvnd", "glib"]
+nixPkgs = ["libglvnd", "glib", "pkg-config"]
+
+[variables]
+NIXPACKS_PYTHON_VERSION = "3.10"
+
+[start]
+cmd = "gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120"

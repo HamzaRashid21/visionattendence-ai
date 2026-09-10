@@ -19,6 +19,7 @@ import base64
 import zipfile
 import json
 import numpy as np
+import pandas as pd
 from functools import wraps
 from datetime import datetime, date, timedelta
 from flask import (
