@@ -491,7 +491,15 @@ def process_webcam_frame_api():
             except Exception:
                 threshold = 0.80
 
-        annotated_frame, recognized_students = process_frame(frame, confidence_threshold=threshold)
+        annotated_frame, recognized_students, detected_boxes = process_frame(
+            frame, confidence_threshold=threshold, return_boxes=True
+        )
+
+        response_payload = {
+            "success": True,
+            "recognized": False,
+            "faces": detected_boxes
+        }
 
         if recognized_students:
             top_match = recognized_students[0]
@@ -518,20 +526,17 @@ def process_webcam_frame_api():
                 "last_update": time.time()
             }
 
-            return jsonify({
-                "success": True,
-                "recognized": True,
-                "student": {
-                    "student_id": top_match["student_id"],
-                    "name": top_match["name"],
-                    "department": dept,
-                    "confidence": top_match["confidence"],
-                    "in_time": logged_time,
-                    "message": msg
-                }
-            })
+            response_payload["recognized"] = True
+            response_payload["student"] = {
+                "student_id": top_match["student_id"],
+                "name": top_match["name"],
+                "department": dept,
+                "confidence": top_match["confidence"],
+                "in_time": logged_time,
+                "message": msg
+            }
 
-        return jsonify({"success": True, "recognized": False})
+        return jsonify(response_payload)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

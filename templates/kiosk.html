@@ -100,6 +100,7 @@
                     <!-- Browser Client-Side Webcam (Instant on Cloud & Mobile) -->
                     <video id="kioskClientVideo" autoplay playsinline muted class="w-full h-full object-cover hidden"></video>
                     <canvas id="kioskClientCanvas" class="hidden"></canvas>
+                    <canvas id="kioskOverlayCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-10"></canvas>
 
                     <!-- Server Stream Fallback -->
                     <img id="kioskCamera" src="{{ url_for('video_feed') }}" 
@@ -251,11 +252,90 @@
         let kioskScanInterval = null;
         let isKioskScanning = false;
 
+        function drawFaceBoxes(faces, videoEl, canvasEl) {
+            if (!canvasEl || !videoEl) return;
+            const ctx = canvasEl.getContext('2d');
+            const vw = videoEl.videoWidth || 640;
+            const vh = videoEl.videoHeight || 480;
+            canvasEl.width = vw;
+            canvasEl.height = vh;
+            ctx.clearRect(0, 0, vw, vh);
+
+            if (!faces || faces.length === 0) return;
+
+            const scaleX = vw / 480;
+            const scaleY = vh / 360;
+
+            faces.forEach(face => {
+                const [rawX, rawY, rawW, rawH] = face.box;
+                const x = rawX * scaleX;
+                const y = rawY * scaleY;
+                const w = rawW * scaleX;
+                const h = rawH * scaleY;
+
+                const isMatched = face.matched;
+                const strokeColor = isMatched ? '#10B981' : '#F59E0B';
+                const fillColor = isMatched ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.10)';
+
+                // Face background glow
+                ctx.fillStyle = fillColor;
+                ctx.fillRect(x, y, w, h);
+
+                // High-Tech Corner Brackets
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = 3;
+                const lineLen = Math.min(22, w * 0.25);
+
+                ctx.beginPath();
+                ctx.moveTo(x, y + lineLen);
+                ctx.lineTo(x, y);
+                ctx.lineTo(x + lineLen, y);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x + w - lineLen, y);
+                ctx.lineTo(x + w, y);
+                ctx.lineTo(x + w, y + lineLen);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x, y + h - lineLen);
+                ctx.lineTo(x, y + h);
+                ctx.lineTo(x + lineLen, y + h);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x + w - lineLen, y + h);
+                ctx.lineTo(x + w, y + h);
+                ctx.lineTo(x + w, y + h - lineLen);
+                ctx.stroke();
+
+                // Floating HUD Badge
+                const labelText = isMatched ? `✓ ${face.name} (${face.confidence}%)` : `🔍 ${face.name}`;
+                ctx.font = 'bold 13px Inter, sans-serif';
+                const textMetrics = ctx.measureText(labelText);
+                const tagW = textMetrics.width + 16;
+                const tagH = 22;
+                const tagX = Math.max(4, Math.min(x + (w - tagW) / 2, vw - tagW - 4));
+                const tagY = Math.max(4, y - tagH - 6);
+
+                ctx.fillStyle = isMatched ? '#10B981' : '#F59E0B';
+                ctx.beginPath();
+                ctx.roundRect ? ctx.roundRect(tagX, tagY, tagW, tagH, 6) : ctx.rect(tagX, tagY, tagW, tagH);
+                ctx.fill();
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(labelText, tagX + 8, tagY + tagH / 2 + 1);
+            });
+        }
+
         async function initKioskClientCamera() {
             const video = document.getElementById('kioskClientVideo');
             const fallbackImg = document.getElementById('kioskCamera');
             const errBox = document.getElementById('kiosk-err');
             const canvas = document.getElementById('kioskClientCanvas');
+            const overlayCanvas = document.getElementById('kioskOverlayCanvas');
             const ctx = canvas.getContext('2d');
 
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -292,10 +372,13 @@
                                 body: JSON.stringify({ image: dataUrl })
                             });
                             const res = await resp.json();
-                            if (res.success && res.recognized && res.student) {
-                                if (lastLoggedId !== res.student.student_id) {
-                                    lastLoggedId = res.student.student_id;
-                                    showStudentModal(res.student);
+                            if (res.success) {
+                                drawFaceBoxes(res.faces, video, overlayCanvas);
+                                if (res.recognized && res.student) {
+                                    if (lastLoggedId !== res.student.student_id) {
+                                        lastLoggedId = res.student.student_id;
+                                        showStudentModal(res.student);
+                                    }
                                 }
                             }
                         } catch (err) {
@@ -303,7 +386,7 @@
                         } finally {
                             isKioskScanning = false;
                         }
-                    }, 450);
+                    }, 400);
 
                     return;
                 } catch (e) {

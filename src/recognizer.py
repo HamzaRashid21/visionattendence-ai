@@ -62,10 +62,13 @@ def load_model_if_available():
     if _model_instance is not None:
         return _model_instance, _model_backend, _labels_map
 
-    # 1. Check TFLite via LiteRT
+    # 1. Check TFLite via LiteRT / tflite-runtime
     if os.path.exists(TFLITE_PATH):
         try:
-            import ai_edge_litert.interpreter as tflite
+            try:
+                import ai_edge_litert.interpreter as tflite
+            except ImportError:
+                import tflite_runtime.interpreter as tflite
             interpreter = tflite.Interpreter(model_path=TFLITE_PATH)
             interpreter.allocate_tensors()
             _input_idx = interpreter.get_input_details()[0]['index']
@@ -125,32 +128,40 @@ def check_liveness(gray_face):
     
     # Laplacian variance check (blur/texture check)
     variance = cv2.Laplacian(gray_face, cv2.CV_64F).var()
-    if variance < 20.0:  # Flat image or poor quality
+    if variance < 14.0:  # Relaxed for dim webcams / evening lighting
         return False, "Low texture / Possible 2D paper photo"
 
     return True, "Live Human Confirmed"
 
 
-def process_frame(frame, confidence_threshold=0.80):
+def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
     """
     Live video frame process karta hai:
-    - Faces detect karta hai
+    - Faces detect karta hai (with histogram equalization for dim lighting)
     - Bounding box aur labels render karta hai
     - Identified student ki info return karta hai (only if confidence >= threshold)
+    - Optional: returns detected face box coordinates for client HUD
     """
     face_cascade, _ = load_detector()
     if face_cascade is None:
-        return frame, []
+        return (frame, [], []) if return_boxes else (frame, [])
 
     h, w, _ = frame.shape
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
     # 0.5x downscale for 4x faster Haar cascade detection (< 10ms latency)
     small_gray = cv2.resize(gray, (0, 0), fx=0.5, fy=0.5)
-    raw_faces = face_cascade.detectMultiScale(small_gray, scaleFactor=1.15, minNeighbors=4, minSize=(35, 35))
+    
+    # Histogram equalization for reliable detection in low/dim classroom lighting
+    equalized_small = cv2.equalizeHist(small_gray)
+    raw_faces = face_cascade.detectMultiScale(equalized_small, scaleFactor=1.1, minNeighbors=3, minSize=(25, 25))
+    if len(raw_faces) == 0:
+        raw_faces = face_cascade.detectMultiScale(small_gray, scaleFactor=1.1, minNeighbors=3, minSize=(25, 25))
+        
     faces = [(int(fx * 2), int(fy * 2), int(fw * 2), int(fh * 2)) for (fx, fy, fw, fh) in raw_faces]
 
     recognized_students = []
+    detected_boxes = []
     model, backend, labels = load_model_if_available()
 
     for (x, y, fw, fh) in faces:
@@ -165,6 +176,13 @@ def process_frame(frame, confidence_threshold=0.80):
             cv2.rectangle(frame, (x, y), (x + fw, y + fh), (0, 0, 255), 2)
             cv2.putText(frame, "PROXY / SPOOF DETECTED!", (x, max(20, y - 10)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2)
+            detected_boxes.append({
+                "box": [int(x), int(y), int(fw), int(fh)],
+                "name": "Spoof Detected",
+                "student_id": None,
+                "confidence": 0,
+                "matched": False
+            })
             continue
 
         student_identified = None
@@ -219,4 +237,14 @@ def process_frame(frame, confidence_threshold=0.80):
             cv2.putText(frame, label_text, (x, max(20, y - 10)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
 
+        detected_boxes.append({
+            "box": [int(x), int(y), int(fw), int(fh)],
+            "name": student_identified["name"] if student_identified else (f"Low Match ({confidence_pct}%)" if confidence_pct > 0 else "Scanning Face..."),
+            "student_id": student_identified["student_id"] if student_identified else None,
+            "confidence": confidence_pct,
+            "matched": bool(student_identified)
+        })
+
+    if return_boxes:
+        return frame, recognized_students, detected_boxes
     return frame, recognized_students
