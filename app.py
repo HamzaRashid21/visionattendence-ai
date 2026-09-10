@@ -407,14 +407,35 @@ class GlobalCameraManager:
                 time.sleep(0.2)
 
 
+def create_cloud_camera_placeholder():
+    """Generates an informative placeholder frame when running on cloud without hardware camera."""
+    img = np.zeros((480, 640, 3), dtype=np.uint8)
+    img[:] = (26, 17, 14)  # High-tech dark slate/navy
+    cv2.rectangle(img, (20, 20), (620, 460), (129, 185, 16), 2)
+    cv2.rectangle(img, (180, 100), (460, 380), (129, 185, 16), 1)
+    cv2.putText(img, "VISIONATTEND AI - CLOUD TERMINAL", (130, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
+    cv2.putText(img, "Please allow Browser Camera access", (135, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (129, 215, 16), 2)
+    cv2.putText(img, "Direct Client-to-Cloud Biometric Engine Active", (125, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+    ret, buf = cv2.imencode('.jpg', img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+    return buf.tobytes() if ret else b''
+
+
 def generate_camera_frames():
     """Streams JPEG frames to client from the unified singleton camera manager."""
     manager = GlobalCameraManager.get_instance()
     manager.start()
     try:
-        timeout = time.time() + 2.5
+        timeout = time.time() + 1.5
         while manager.current_jpeg is None and time.time() < timeout:
             time.sleep(0.05)
+
+        if manager.current_jpeg is None:
+            # Yield placeholder frame so stream doesn't hang in cloud containers
+            placeholder = create_cloud_camera_placeholder()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + placeholder + b'\r\n')
+            time.sleep(1.0)
+            return
 
         while True:
             jpeg = manager.current_jpeg
@@ -434,6 +455,85 @@ def generate_camera_frames():
 def video_feed():
     """Video streaming route for camera feed (Whitelisted for kiosk and scanner)."""
     return Response(generate_camera_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/api/process_webcam_frame', methods=['POST'])
+def process_webcam_frame_api():
+    """
+    Client-side WebRTC / HTML5 webcam frame receiver.
+    Decodes frame, runs anti-spoofing and face recognition, logs attendance in DB,
+    and returns verification result.
+    """
+    global _live_status
+    try:
+        data = request.get_json(silent=True) or {}
+        image_data = data.get('image', '')
+        if not image_data:
+            return jsonify({"success": False, "error": "No image payload"}), 400
+
+        if ',' in image_data:
+            image_data = image_data.split(',', 1)[1]
+
+        image_bytes = base64.b64decode(image_data)
+        np_arr = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return jsonify({"success": False, "error": "Invalid image format"}), 400
+
+        # Dynamic threshold from settings (default: 80% / 0.80)
+        rec = Setting.query.filter_by(key="recognition_threshold").first()
+        threshold = 0.80
+        if rec and rec.value:
+            try:
+                val = float(rec.value.strip())
+                threshold = max(0.50, min(0.99, val / 100.0 if val > 1 else val))
+            except Exception:
+                threshold = 0.80
+
+        annotated_frame, recognized_students = process_frame(frame, confidence_threshold=threshold)
+
+        if recognized_students:
+            top_match = recognized_students[0]
+            status_ok, msg, att_data = record_attendance(top_match["student_id"])
+            stu = Student.query.filter_by(student_id=top_match["student_id"]).first()
+            dept = stu.department if stu else "Computer Science"
+            now_str = datetime.now().strftime("%I:%M %p")
+
+            if att_data and att_data.get("in_time"):
+                logged_time = att_data.get("in_time")
+            else:
+                today_rec = Attendance.query.filter_by(student_id=top_match["student_id"], date=date.today()).first()
+                logged_time = today_rec.in_time if today_rec and today_rec.in_time else now_str
+
+            _live_status = {
+                "active": True,
+                "student_id": top_match["student_id"],
+                "name": top_match["name"],
+                "department": dept,
+                "confidence": top_match["confidence"],
+                "in_time": logged_time,
+                "duration_minutes": att_data.get("duration_minutes", 0) if att_data else 0,
+                "unknown": False,
+                "last_update": time.time()
+            }
+
+            return jsonify({
+                "success": True,
+                "recognized": True,
+                "student": {
+                    "student_id": top_match["student_id"],
+                    "name": top_match["name"],
+                    "department": dept,
+                    "confidence": top_match["confidence"],
+                    "in_time": logged_time,
+                    "message": msg
+                }
+            })
+
+        return jsonify({"success": True, "recognized": False})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/api/live_recognition_status')

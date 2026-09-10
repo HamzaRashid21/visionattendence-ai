@@ -197,6 +197,11 @@
 
                 <!-- Video Frame Container (Large on Mobile, 16:9 on Desktop) -->
                 <div class="relative h-[50vh] sm:h-auto sm:aspect-video bg-slate-950 rounded-2xl overflow-hidden border border-slate-700/80 shadow-inner flex items-center justify-center">
+                    <!-- Browser Client-Side Webcam Video (Instant, works on Railway Cloud & Mobile) -->
+                    <video id="clientVideo" autoplay playsinline muted class="w-full h-full object-cover hidden"></video>
+                    <canvas id="clientCanvas" class="hidden"></canvas>
+
+                    <!-- Server Stream Fallback (Localhost mode) -->
                     <img id="cameraStream" src="" 
                          alt="Live AI Scanner" 
                          class="w-full h-full object-cover hidden"
@@ -206,7 +211,7 @@
                     <div id="cam-loading-box" class="flex flex-col items-center justify-center text-slate-400 text-center p-6">
                         <i class="fa-solid fa-spinner fa-spin text-3xl text-emerald-500 mb-2"></i>
                         <h4 class="text-sm font-semibold text-white">Starting Camera Stream...</h4>
-                        <p class="text-xs text-slate-400 mt-1">Acquiring 30 FPS optical sensor...</p>
+                        <p class="text-xs text-slate-400 mt-1">Please allow camera permissions if prompted...</p>
                     </div>
 
                     <div id="cam-error-box" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white text-center p-6">
@@ -340,6 +345,9 @@
 let pollInterval = null;
 let revertTimeout = null;
 let lastSeenStudentId = null;
+let clientStream = null;
+let clientScanInterval = null;
+let isScanningFrame = false;
 const VIDEO_STREAM_URL = "{{ url_for('video_feed') }}";
 
 // Dynamic Client-side Class Filter Function
@@ -365,6 +373,91 @@ function filterTableByClass(selectedClass) {
     }
 }
 
+// Start client webcam using HTML5 getUserMedia
+async function initClientCamera() {
+    const video = document.getElementById('clientVideo');
+    const loadingBox = document.getElementById('cam-loading-box');
+    const errorBox = document.getElementById('cam-error-box');
+    const fallbackImg = document.getElementById('cameraStream');
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                audio: false
+            });
+            clientStream = stream;
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                video.play();
+                video.classList.remove('hidden');
+                loadingBox.classList.add('hidden');
+                errorBox.classList.add('hidden');
+                fallbackImg.classList.add('hidden');
+            };
+            startClientScanning();
+            return;
+        } catch (err) {
+            console.warn("Client webcam failed, falling back to server stream:", err);
+        }
+    }
+
+    // Fallback to server MJPEG stream (Localhost mode)
+    fallbackImg.src = VIDEO_STREAM_URL + '?t=' + Date.now();
+    startPolling();
+}
+
+function stopClientCamera() {
+    if (clientScanInterval) {
+        clearInterval(clientScanInterval);
+        clientScanInterval = null;
+    }
+    if (clientStream) {
+        clientStream.getTracks().forEach(track => track.stop());
+        clientStream = null;
+    }
+    const video = document.getElementById('clientVideo');
+    if (video) {
+        video.pause();
+        video.srcObject = null;
+        video.classList.add('hidden');
+    }
+}
+
+function startClientScanning() {
+    const video = document.getElementById('clientVideo');
+    const canvas = document.getElementById('clientCanvas');
+    const ctx = canvas.getContext('2d');
+
+    if (clientScanInterval) clearInterval(clientScanInterval);
+    clientScanInterval = setInterval(async () => {
+        if (isScanningFrame || !clientStream || video.paused || video.ended) return;
+        if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+        canvas.width = 480;
+        canvas.height = 360;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+
+        isScanningFrame = true;
+        try {
+            const resp = await fetch('/api/process_webcam_frame', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: dataUrl })
+            });
+            const data = await resp.json();
+            if (data.success && data.recognized && data.student) {
+                renderRecognizedCard(data.student);
+            }
+        } catch (err) {
+            console.error("Client scan error:", err);
+        } finally {
+            isScanningFrame = false;
+        }
+    }, 450);
+}
+
 // Toggle between Table View and Face Recognition Camera View
 function switchView(mode) {
     const tableDiv = document.getElementById('tableView');
@@ -384,15 +477,12 @@ function switchView(mode) {
         tabCameraBtn.className = "flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-md shadow-emerald-600/20";
         tabTableBtn.className = "flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm";
 
-        // Reset recognition card to idle scanning state
         idleBox.classList.remove('hidden');
         activeBox.classList.add('hidden');
-
         camErrorBox.classList.add('hidden');
         camLoadingBox.classList.remove('hidden');
-        cameraStreamImg.src = VIDEO_STREAM_URL + '?t=' + Date.now();
 
-        startPolling();
+        initClientCamera();
     } else {
         cameraDiv.classList.add('hidden');
         tableDiv.classList.remove('hidden');
@@ -400,56 +490,55 @@ function switchView(mode) {
         tabTableBtn.className = "flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-md shadow-emerald-600/20";
         tabCameraBtn.className = "flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm hover:border-emerald-300";
 
+        stopClientCamera();
+        stopPolling();
         cameraStreamImg.src = "";
         cameraStreamImg.classList.add('hidden');
-        stopPolling();
     }
 }
 
-// Live Face Recognition Polling
+function renderRecognizedCard(data) {
+    const idleBox = document.getElementById('recogIdleState');
+    const activeBox = document.getElementById('recogActiveState');
+    const pBar = document.getElementById('recogProgressBar');
+
+    document.getElementById('recogName').innerText = data.name || data.student_id;
+    document.getElementById('recogRoll').innerText = data.student_id;
+    document.getElementById('recogClass').innerText = data.department || 'BCS - 1A';
+    document.getElementById('recogTime').innerText = data.in_time || 'Just now';
+    
+    if (data.confidence) {
+        document.getElementById('recogMatchBadge').innerText = `${data.confidence}% Biometric Match`;
+    }
+
+    idleBox.classList.add('hidden');
+    activeBox.classList.remove('hidden');
+
+    pBar.style.width = '100%';
+    setTimeout(() => { pBar.style.width = '0%'; }, 50);
+
+    if (lastSeenStudentId !== data.student_id) {
+        lastSeenStudentId = data.student_id;
+        const sound = document.getElementById('successChime');
+        if (sound) sound.play().catch(() => {});
+        updateTableRow(data.student_id, data.in_time);
+    }
+
+    if (revertTimeout) clearTimeout(revertTimeout);
+    revertTimeout = setTimeout(() => {
+        activeBox.classList.add('hidden');
+        idleBox.classList.remove('hidden');
+        lastSeenStudentId = null;
+    }, 3200);
+}
+
+// Live Face Recognition Polling (for server fallback)
 function pollFaceRecognition() {
     fetch('/api/live_recognition_status')
         .then(res => res.json())
         .then(data => {
-            const idleBox = document.getElementById('recogIdleState');
-            const activeBox = document.getElementById('recogActiveState');
-            const pBar = document.getElementById('recogProgressBar');
-
             if (data.active && data.student_id) {
-                document.getElementById('recogName').innerText = data.name || data.student_id;
-                document.getElementById('recogRoll').innerText = data.student_id;
-                document.getElementById('recogClass').innerText = data.department || 'BCS - 1A';
-                document.getElementById('recogTime').innerText = data.in_time || 'Just now';
-                
-                if (data.confidence) {
-                    document.getElementById('recogMatchBadge').innerText = `${data.confidence}% Biometric Match`;
-                }
-
-                // Show active verification card, hide idle radar
-                idleBox.classList.add('hidden');
-                activeBox.classList.remove('hidden');
-
-                // Animate progress bar
-                pBar.style.width = '100%';
-                setTimeout(() => { pBar.style.width = '0%'; }, 50);
-
-                // Play chime on new student detection
-                if (lastSeenStudentId !== data.student_id) {
-                    lastSeenStudentId = data.student_id;
-                    const sound = document.getElementById('successChime');
-                    if (sound) sound.play().catch(() => {});
-
-                    // Update corresponding row in Table Sheet
-                    updateTableRow(data.student_id, data.in_time);
-                }
-
-                // Revert to idle radar after 3.2 seconds
-                if (revertTimeout) clearTimeout(revertTimeout);
-                revertTimeout = setTimeout(() => {
-                    activeBox.classList.add('hidden');
-                    idleBox.classList.remove('hidden');
-                    lastSeenStudentId = null;
-                }, 3200);
+                renderRecognizedCard(data);
             }
         })
         .catch(e => console.log(e));

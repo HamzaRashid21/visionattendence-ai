@@ -97,6 +97,11 @@
                 <!-- Camera Video Container (TALL ON MOBILE, 16:9 ON DESKTOP) -->
                 <div class="relative h-[62vh] sm:h-auto sm:aspect-video bg-black rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-800 flex items-center justify-center">
                     
+                    <!-- Browser Client-Side Webcam (Instant on Cloud & Mobile) -->
+                    <video id="kioskClientVideo" autoplay playsinline muted class="w-full h-full object-cover hidden"></video>
+                    <canvas id="kioskClientCanvas" class="hidden"></canvas>
+
+                    <!-- Server Stream Fallback -->
                     <img id="kioskCamera" src="{{ url_for('video_feed') }}" 
                          alt="Live Kiosk Stream" 
                          class="w-full h-full object-cover"
@@ -106,7 +111,7 @@
                     <div id="kiosk-err" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-950 p-6 text-center z-20">
                         <i class="fa-solid fa-camera-rotate text-3xl sm:text-4xl text-slate-600 mb-3 animate-spin"></i>
                         <h3 class="text-sm sm:text-base font-bold text-white">Initializing Optical Vision Sensor...</h3>
-                        <p class="text-xs text-slate-400 mt-1">Please face the camera directly.</p>
+                        <p class="text-xs text-slate-400 mt-1">Please allow camera access in browser...</p>
                     </div>
 
                     <!-- Centered Futuristic Face Framing Reticle -->
@@ -241,7 +246,75 @@
             }, 2800);
         }
 
-        // Live Recognition Polling
+        // Client Webcam Integration (Works on Cloud & Mobile)
+        let kioskStream = null;
+        let kioskScanInterval = null;
+        let isKioskScanning = false;
+
+        async function initKioskClientCamera() {
+            const video = document.getElementById('kioskClientVideo');
+            const fallbackImg = document.getElementById('kioskCamera');
+            const errBox = document.getElementById('kiosk-err');
+            const canvas = document.getElementById('kioskClientCanvas');
+            const ctx = canvas.getContext('2d');
+
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                        audio: false
+                    });
+                    kioskStream = stream;
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        video.classList.remove('hidden');
+                        fallbackImg.classList.add('hidden');
+                        errBox.classList.add('hidden');
+                    };
+
+                    // Start sending frames to AI backend
+                    if (kioskScanInterval) clearInterval(kioskScanInterval);
+                    kioskScanInterval = setInterval(async () => {
+                        if (isKioskScanning || !kioskStream || video.paused || video.ended) return;
+                        if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+                        canvas.width = 480;
+                        canvas.height = 360;
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+
+                        isKioskScanning = true;
+                        try {
+                            const resp = await fetch('/api/process_webcam_frame', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ image: dataUrl })
+                            });
+                            const res = await resp.json();
+                            if (res.success && res.recognized && res.student) {
+                                if (lastLoggedId !== res.student.student_id) {
+                                    lastLoggedId = res.student.student_id;
+                                    showStudentModal(res.student);
+                                }
+                            }
+                        } catch (err) {
+                            console.error("Kiosk scan error:", err);
+                        } finally {
+                            isKioskScanning = false;
+                        }
+                    }, 450);
+
+                    return;
+                } catch (e) {
+                    console.warn("Kiosk client camera unavailable, using fallback stream:", e);
+                }
+            }
+        }
+
+        initKioskClientCamera();
+
+        // Live Recognition Polling (Fallback for server camera)
         function pollKiosk() {
             fetch('/api/live_recognition_status')
                 .then(r => r.json())
