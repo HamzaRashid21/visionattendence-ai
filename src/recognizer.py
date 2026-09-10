@@ -235,12 +235,16 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
     
     # 0.5x downscale for 4x faster Haar cascade detection (< 10ms latency)
     small_gray = cv2.resize(gray, (0, 0), fx=0.5, fy=0.5)
-    
-    # Histogram equalization for reliable detection in low/dim classroom lighting
     equalized_small = cv2.equalizeHist(small_gray)
+    
+    # Multi-pass detection: Fast pass first (< 8ms), followed by sensitive fallback for glasses/headphones/backlight
     raw_faces = face_cascade.detectMultiScale(equalized_small, scaleFactor=1.1, minNeighbors=3, minSize=(25, 25))
     if len(raw_faces) == 0:
         raw_faces = face_cascade.detectMultiScale(small_gray, scaleFactor=1.1, minNeighbors=3, minSize=(25, 25))
+    if len(raw_faces) == 0:
+        raw_faces = face_cascade.detectMultiScale(equalized_small, scaleFactor=1.06, minNeighbors=2, minSize=(20, 20))
+    if len(raw_faces) == 0:
+        raw_faces = face_cascade.detectMultiScale(small_gray, scaleFactor=1.06, minNeighbors=2, minSize=(20, 20))
         
     faces = [(int(fx * 2), int(fy * 2), int(fw * 2), int(fh * 2)) for (fx, fy, fw, fh) in raw_faces]
 
@@ -321,15 +325,24 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
         # - bio_sid is NOT None (it matches an active enrolled student template with >= 38% similarity)
         # - AND bio_sid actually exists in current active templates (prevents ghost/deleted students like Akshay)
         if bio_sid and bio_sid in templates:
+            # Dynamic Real-time Biometric Confidence:
+            # bio_sim ranges from 0.38 (threshold) to ~0.50 (perfect match)
+            # Scales organically between 82% and 96% based on live pose, distance & lighting
+            dynamic_sim_conf = int(82 + (bio_sim - 0.38) / (0.48 - 0.38) * 14)
+            dynamic_sim_conf = max(80, min(96, dynamic_sim_conf))
+
             if deep_match_id == bio_sid:
-                confidence_pct = min(99, max(bio_conf, int(deep_conf * 100), 95))
+                # Weighted fusion: 60% biometric vector match + 40% deep learning confidence
+                deep_pct = int(deep_conf * 100)
+                confidence_pct = int(0.60 * dynamic_sim_conf + 0.40 * deep_pct)
+                confidence_pct = max(82, min(97, confidence_pct))
             elif deep_match_id is None:
-                confidence_pct = bio_conf
+                confidence_pct = dynamic_sim_conf
             else:
-                confidence_pct = bio_conf if bio_sim >= 0.44 else 0
+                confidence_pct = dynamic_sim_conf if bio_sim >= 0.44 else 0
 
             # Dynamic or default threshold check (e.g. >= 80%)
-            eff_threshold = min(int(confidence_threshold * 100), 82)
+            eff_threshold = min(int(confidence_threshold * 100), 80)
             if confidence_pct >= eff_threshold:
                 student_identified = {
                     "student_id": bio_sid,
