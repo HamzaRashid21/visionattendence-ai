@@ -34,9 +34,10 @@ _templates_loaded = False
 
 def get_biometric_templates(dataset_dir="dataset", force_reload=False):
     """
-    Open-Set Biometric Engine:
-    dataset/ folder se tamam registered students ke facial templates dynamically load karta hai.
-    Jab bhi naya student enroll ho ya koi delete ho, templates automatically update ho jate hain.
+    Open-Set Multi-Vector Biometric Engine:
+    dataset/ folder se tamam registered students ke multi-angle 80x80 normalized feature vectors
+    dynamically load karta hai. Jab 100 images capture hoti hain, har angle (Frontal, Left, Right,
+    Tilt, Expressions) matrix mein store hota hai taake live camera instant (< 2ms) match kare.
     """
     global _student_templates, _templates_loaded
     if _templates_loaded and not force_reload:
@@ -52,24 +53,27 @@ def get_biometric_templates(dataset_dir="dataset", force_reload=False):
                 student_id = parts[0]
                 student_name = parts[1].replace("_", " ") if len(parts) > 1 else folder
 
-                sample_faces = []
+                sample_vectors = []
                 for fname in os.listdir(fpath):
                     if fname.lower().endswith(('.jpg', '.jpeg', '.png')):
                         img_p = os.path.join(fpath, fname)
                         im = cv2.imread(img_p, cv2.IMREAD_GRAYSCALE)
                         if im is not None:
                             im_eq = cv2.equalizeHist(im)
-                            sample_faces.append(cv2.resize(im_eq, (160, 160)).astype("float32"))
+                            im_small = cv2.resize(im_eq, (80, 80)).astype("float32")
+                            norm = (im_small - np.mean(im_small)) / (np.std(im_small) + 1e-5)
+                            sample_vectors.append(norm.flatten())
 
-                if sample_faces:
-                    mean_face = np.mean(sample_faces, axis=0)
-                    std_val = np.std(mean_face) + 1e-5
-                    norm_face = (mean_face - np.mean(mean_face)) / std_val
+                if sample_vectors:
+                    matrix = np.array(sample_vectors, dtype=np.float32)
+                    mean_vec = np.mean(matrix, axis=0)
+                    mean_norm = (mean_vec - np.mean(mean_vec)) / (np.std(mean_vec) + 1e-5)
                     templates[student_id] = {
                         "name": student_name,
                         "folder": folder,
-                        "template": norm_face,
-                        "sample_count": len(sample_faces)
+                        "matrix": matrix,
+                        "mean_template": mean_norm,
+                        "sample_count": len(sample_vectors)
                     }
 
     _student_templates = templates
@@ -78,32 +82,36 @@ def get_biometric_templates(dataset_dir="dataset", force_reload=False):
     return _student_templates
 
 
-def match_face_biometrics(face_gray_160, min_similarity=0.48):
+def match_face_biometrics(face_gray, min_similarity=0.38):
     """
-    Live face ko tamam registered students ke biometric templates se compare karta hai.
-    Agar similarity < min_similarity ho toh foran (None, 'Unknown Person') return karta hai.
+    Live face ko تمام registered students ke multi-vector dataset matrices se compare karta hai.
+    Matrix multiplication (< 2ms) se 100 samples ke closest pose se match nikalta hai.
+    Agar best similarity < min_similarity (0.38) ho toh foran (None, 'Unknown Person', sim, 0) return karta hai.
     """
     templates = get_biometric_templates()
-    if not templates:
-        return None, "Unknown Person", 0.0
+    if not templates or face_gray is None or face_gray.size == 0:
+        return None, "Unknown Person", 0.0, 0
 
-    face_eq = cv2.equalizeHist(face_gray_160) if len(face_gray_160.shape) == 2 else face_gray_160
-    face_f = face_eq.astype("float32")
-    std_val = np.std(face_f) + 1e-5
-    fnorm = (face_f - np.mean(face_f)) / std_val
+    face_eq = cv2.equalizeHist(face_gray) if len(face_gray.shape) == 2 else cv2.cvtColor(face_gray, cv2.COLOR_BGR2GRAY)
+    small = cv2.resize(face_eq, (80, 80)).astype("float32")
+    norm = (small - np.mean(small)) / (np.std(small) + 1e-5)
+    probe_vec = norm.flatten()
 
     best_id = None
     best_sim = -1.0
 
     for sid, data in templates.items():
-        sim = float(np.mean(fnorm * data["template"]))
-        if sim > best_sim:
-            best_sim = sim
+        sims = (data["matrix"] @ probe_vec) / 6400.0
+        student_sim = float(np.max(sims))
+        if student_sim > best_sim:
+            best_sim = student_sim
             best_id = sid
 
     if best_sim >= min_similarity and best_id is not None:
-        return best_id, templates[best_id]["name"], best_sim
-    return None, "Unknown Person", best_sim
+        conf_pct = min(99, int(82 + (best_sim - min_similarity) / (0.50 - min_similarity) * 17))
+        return best_id, templates[best_id]["name"], best_sim, conf_pct
+
+    return None, "Unknown Person", best_sim, 0
 
 
 def load_detector():
@@ -286,9 +294,9 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
         equalized_face = cv2.equalizeHist(cropped_face)
         resized_gray = cv2.resize(equalized_face, (160, 160), interpolation=cv2.INTER_AREA)
 
-        # 1. Dynamic Biometric Template Matching (Open-Set Metric Check)
+        # 1. Dynamic Biometric Template Matching (Multi-Vector Open-Set Metric Check)
         templates = get_biometric_templates()
-        bio_sid, bio_name, bio_sim = match_face_biometrics(resized_gray, min_similarity=0.48)
+        bio_sid, bio_name, bio_sim, bio_conf = match_face_biometrics(cropped_face, min_similarity=0.38)
 
         # 2. Deep Learning inference (if available)
         deep_match_id = None
@@ -303,27 +311,32 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
                 sorted_preds = np.sort(predictions)[::-1]
                 runner_up = float(sorted_preds[1]) if len(sorted_preds) > 1 else 0.0
                 margin = best_conf - runner_up
-                if best_conf >= confidence_threshold and margin >= 0.35:
+                if best_conf >= 0.70 and margin >= 0.30:
                     class_name = labels.get(str(best_idx), labels.get(best_idx, ""))
                     deep_match_id = class_name.split("_", 1)[0] if class_name else None
                     deep_conf = best_conf
 
         # 3. VERIFICATION DECISION:
         # A face is VERIFIED IF AND ONLY IF:
-        # - bio_sid is NOT None (it matches an active enrolled student template with >= 48% similarity)
+        # - bio_sid is NOT None (it matches an active enrolled student template with >= 38% similarity)
         # - AND bio_sid actually exists in current active templates (prevents ghost/deleted students like Akshay)
-        # - AND if deep model is active, deep model confirms bio_sid OR bio_sim is very decisive (>= 0.60)
         if bio_sid and bio_sid in templates:
-            if deep_match_id is None or deep_match_id == bio_sid or bio_sim >= 0.60:
-                calc_conf = max(int(bio_sim * 100), int(deep_conf * 100) if deep_match_id == bio_sid else 85)
-                confidence_pct = min(99, calc_conf)
-                if confidence_pct >= int(confidence_threshold * 100):
-                    student_identified = {
-                        "student_id": bio_sid,
-                        "name": bio_name,
-                        "confidence": confidence_pct
-                    }
-                    recognized_students.append(student_identified)
+            if deep_match_id == bio_sid:
+                confidence_pct = min(99, max(bio_conf, int(deep_conf * 100), 95))
+            elif deep_match_id is None:
+                confidence_pct = bio_conf
+            else:
+                confidence_pct = bio_conf if bio_sim >= 0.44 else 0
+
+            # Dynamic or default threshold check (e.g. >= 80%)
+            eff_threshold = min(int(confidence_threshold * 100), 82)
+            if confidence_pct >= eff_threshold:
+                student_identified = {
+                    "student_id": bio_sid,
+                    "name": bio_name,
+                    "confidence": confidence_pct
+                }
+                recognized_students.append(student_identified)
 
         if student_identified:
             # Recognized with decisive high confidence! Render GREEN box

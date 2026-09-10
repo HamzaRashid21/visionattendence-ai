@@ -481,15 +481,15 @@ def process_webcam_frame_api():
         if frame is None:
             return jsonify({"success": False, "error": "Invalid image format"}), 400
 
-        # Dynamic threshold from settings (default: 95% / 0.95)
+        # Dynamic threshold from settings (default: 80% / 0.80)
         rec = Setting.query.filter_by(key="recognition_threshold").first()
-        threshold = 0.95
+        threshold = 0.80
         if rec and rec.value:
             try:
                 val = float(rec.value.strip())
                 threshold = max(0.50, min(0.99, val / 100.0 if val > 1 else val))
             except Exception:
-                threshold = 0.95
+                threshold = 0.80
 
         annotated_frame, recognized_students, detected_boxes = process_frame(
             frame, confidence_threshold=threshold, return_boxes=True
