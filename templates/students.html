@@ -45,13 +45,13 @@
 
             <!-- Biometric Dataset Status Indicator -->
             <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                {% if sample_count >= 50 %}
+                {% if sample_count >= 100 %}
                 <span class="text-emerald-600 font-bold flex items-center gap-1.5" id="statusBadge-{{ student.student_id }}">
                     <i class="fa-solid fa-circle-check"></i> {{ sample_count }} Samples Ready
                 </span>
                 {% elif sample_count > 0 %}
                 <span class="text-amber-600 font-bold flex items-center gap-1.5" id="statusBadge-{{ student.student_id }}">
-                    <i class="fa-solid fa-triangle-exclamation"></i> {{ sample_count }}/60 Incomplete
+                    <i class="fa-solid fa-triangle-exclamation"></i> {{ sample_count }}/100 Incomplete
                 </span>
                 {% else %}
                 <span class="text-slate-400 font-medium flex items-center gap-1.5" id="statusBadge-{{ student.student_id }}">
@@ -102,19 +102,22 @@
             </button>
         </div>
 
-        <!-- 4 Guided Stage Pills -->
-        <div class="px-5 pt-3 pb-2 bg-slate-50/70 border-b border-slate-100 grid grid-cols-4 gap-1.5 text-[10px] text-center font-bold">
-            <div id="pillStage1" class="py-1.5 px-1 rounded-lg bg-emerald-600 text-white shadow-sm transition-all">
+        <!-- 5 Guided Stage Pills (100 Photos Total) -->
+        <div class="px-5 pt-3 pb-2 bg-slate-50/70 border-b border-slate-100 grid grid-cols-5 gap-1 text-[10px] text-center font-bold">
+            <div id="pillStage1" class="py-1.5 px-0.5 rounded-lg bg-emerald-600 text-white shadow-sm transition-all truncate">
                 1. Frontal
             </div>
-            <div id="pillStage2" class="py-1.5 px-1 rounded-lg bg-slate-200 text-slate-600 transition-all">
-                2. Left / Right
+            <div id="pillStage2" class="py-1.5 px-0.5 rounded-lg bg-slate-200 text-slate-600 transition-all truncate">
+                2. Left/Right
             </div>
-            <div id="pillStage3" class="py-1.5 px-1 rounded-lg bg-slate-200 text-slate-600 transition-all">
-                3. Up / Down
+            <div id="pillStage3" class="py-1.5 px-0.5 rounded-lg bg-slate-200 text-slate-600 transition-all truncate">
+                3. Up/Down
             </div>
-            <div id="pillStage4" class="py-1.5 px-1 rounded-lg bg-slate-200 text-slate-600 transition-all">
+            <div id="pillStage4" class="py-1.5 px-0.5 rounded-lg bg-slate-200 text-slate-600 transition-all truncate">
                 4. Expressions
+            </div>
+            <div id="pillStage5" class="py-1.5 px-0.5 rounded-lg bg-slate-200 text-slate-600 transition-all truncate">
+                5. Distance
             </div>
         </div>
 
@@ -268,39 +271,46 @@
     let isPaused = false;
     let currentStudentId = '';
     let currentStudentName = '';
-    let targetCount = 60;
+    let targetCount = 100;
     let currentCount = 0;
     let captureLoopTimer = null;
 
-    // 4 Distinct Paced Biometric Stages (15 frames each)
+    // 5 Distinct Paced Biometric Stages (20 frames each = 100 frames total)
     const stages = [
         {
             stage: 1,
             pillId: 'pillStage1',
-            title: 'Stage 1: Frontal Neutral Face (Photos 1 – 15)',
-            instruction: 'Look directly at the camera with a neutral expression.',
+            title: 'Stage 1: Frontal Neutral Face (Photos 1 – 20)',
+            instruction: 'Look directly at the camera with a neutral, natural expression.',
             helper: 'Keep your face centered inside the green oval guide.'
         },
         {
             stage: 2,
             pillId: 'pillStage2',
-            title: 'Stage 2: Side Angles / Left & Right (Photos 16 – 30)',
+            title: 'Stage 2: Left & Right Profile Angles (Photos 21 – 40)',
             instruction: 'Slowly turn your head slightly to the left, then slightly to the right.',
             helper: 'Capturing ear-to-ear facial profile and cheekbone structure.'
         },
         {
             stage: 3,
             pillId: 'pillStage3',
-            title: 'Stage 3: Upper & Lower Tilt (Photos 31 – 45)',
+            title: 'Stage 3: Upper & Lower Tilt (Photos 41 – 60)',
             instruction: 'Tilt your chin slightly upward, then slightly downward.',
-            helper: 'Capturing upper forehead, eyebrows, and lower jawline.'
+            helper: 'Capturing forehead, eyebrows, and lower jawline.'
         },
         {
             stage: 4,
             pillId: 'pillStage4',
-            title: 'Stage 4: Expressions & Natural Smile (Photos 46 – 60)',
-            instruction: 'Give a gentle natural smile and blink normally.',
-            helper: 'Recording dynamic facial expressions for robust recognition.'
+            title: 'Stage 4: Dynamic Facial Expressions (Photos 61 – 80)',
+            instruction: 'Give a gentle natural smile, talk normally, and blink.',
+            helper: 'Recording diverse expressions for high-accuracy recognition.'
+        },
+        {
+            stage: 5,
+            pillId: 'pillStage5',
+            title: 'Stage 5: Distance & Lighting Variation (Photos 81 – 100)',
+            instruction: 'Move slightly closer or further, tilt head naturally.',
+            helper: 'Ensuring robust recognition regardless of distance or ambient light.'
         }
     ];
 
@@ -318,7 +328,7 @@
 
         document.getElementById('captureModal').classList.remove('hidden');
         document.getElementById('startCaptureBtn').disabled = false;
-        document.getElementById('startBtnLabel').innerText = currentCount >= targetCount ? "Re-Capture 60 Photos" : "Start Guided Capture";
+        document.getElementById('startBtnLabel').innerText = currentCount >= targetCount ? "Re-Capture 100 Photos" : "Start Guided Capture";
         document.getElementById('pauseResumeBtn').classList.add('hidden');
 
         // Start HTML5 camera stream
@@ -364,26 +374,28 @@
 
     function updateStageUI(count) {
         let activeIdx = 0;
-        if (count >= 45) activeIdx = 3;
-        else if (count >= 30) activeIdx = 2;
-        else if (count >= 15) activeIdx = 1;
+        if (count >= 80) activeIdx = 4;
+        else if (count >= 60) activeIdx = 3;
+        else if (count >= 40) activeIdx = 2;
+        else if (count >= 20) activeIdx = 1;
         else activeIdx = 0;
 
         const st = stages[activeIdx];
         document.getElementById('stageTitle').innerText = st.title;
         document.getElementById('captureInstructions').innerText = st.instruction;
         document.getElementById('stageHelper').innerText = st.helper;
-        document.getElementById('stageCounterPill').innerText = `Stage ${st.stage} / 4`;
+        document.getElementById('stageCounterPill').innerText = `Stage ${st.stage} / 5`;
 
         // Update pills
-        ['pillStage1', 'pillStage2', 'pillStage3', 'pillStage4'].forEach((id, idx) => {
+        ['pillStage1', 'pillStage2', 'pillStage3', 'pillStage4', 'pillStage5'].forEach((id, idx) => {
             const el = document.getElementById(id);
+            if (!el) return;
             if (idx === activeIdx) {
-                el.className = "py-1.5 px-1 rounded-lg bg-emerald-600 text-white shadow-md font-extrabold ring-2 ring-emerald-300";
+                el.className = "py-1.5 px-0.5 rounded-lg bg-emerald-600 text-white shadow-md font-extrabold ring-2 ring-emerald-300 truncate";
             } else if (idx < activeIdx) {
-                el.className = "py-1.5 px-1 rounded-lg bg-emerald-100 text-emerald-800 font-bold";
+                el.className = "py-1.5 px-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-bold truncate";
             } else {
-                el.className = "py-1.5 px-1 rounded-lg bg-slate-200 text-slate-500";
+                el.className = "py-1.5 px-0.5 rounded-lg bg-slate-200 text-slate-500 truncate";
             }
         });
     }
@@ -494,21 +506,21 @@
         const sound = document.getElementById('datasetDoneSound');
         if (sound) sound.play().catch(() => {});
 
-        document.getElementById('stageTitle').innerText = "🎉 All 60 Biometric Photos Verified & Saved!";
+        document.getElementById('stageTitle').innerText = "🎉 All 100 Biometric Photos Verified & Saved!";
         document.getElementById('captureInstructions').innerHTML = 
-            `<span class="text-emerald-700 font-bold">Frontal, side angles, upper/lower tilt, and expressions saved in dataset/${currentStudentId}_${currentStudentName.replace(/ /g, '_')}!</span>`;
+            `<span class="text-emerald-700 font-bold">Frontal, side profiles, tilts, expressions, and distance variations saved in dataset/${currentStudentId}_${currentStudentName.replace(/ /g, '_')}!</span>`;
         document.getElementById('stageHelper').innerText = "This student is now ready for deep learning model training.";
 
-        document.getElementById('startBtnLabel').innerText = "Re-Capture";
+        document.getElementById('startBtnLabel').innerText = "Re-Capture 100 Photos";
         document.getElementById('startCaptureBtn').disabled = false;
         document.getElementById('pauseResumeBtn').classList.add('hidden');
-        setFaceStatus(true, "Dataset Complete (60/60)");
+        setFaceStatus(true, "Dataset Complete (100/100)");
 
         // Update badge in students list
         const badge = document.getElementById(`statusBadge-${currentStudentId}`);
         if (badge) {
             badge.className = "text-emerald-600 font-bold flex items-center gap-1.5";
-            badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> 60 Samples Ready`;
+            badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> 100 Samples Ready`;
         }
     }
 </script>

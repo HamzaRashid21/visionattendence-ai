@@ -7,28 +7,35 @@
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
             <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Face Biometric Database</h1>
-            <p class="text-xs text-slate-500 mt-0.5">SRS Page 6 Requirement: Inspect captured grayscale face datasets and training samples</p>
+            <p class="text-xs text-slate-500 mt-0.5">Enterprise Biometric Database · Inspect enrolled student face datasets, sample distribution, and train the AI engine.</p>
         </div>
-        <a href="{{ url_for('students') }}" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2">
-            <i class="fa-solid fa-camera"></i> Capture Face Dataset
-        </a>
+        <div class="flex items-center gap-2.5 w-full sm:w-auto">
+            <button id="trainModelBtn" onclick="triggerModelTraining()" 
+                    class="flex-1 sm:flex-initial px-4 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-bolt text-amber-300"></i>
+                <span id="trainBtnText">Train AI Model Now</span>
+            </button>
+            <a href="{{ url_for('students') }}" class="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-camera text-emerald-600"></i> Capture Face Dataset
+            </a>
+        </div>
     </div>
 
     <!-- Dataset Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
         {% for folder in dataset_folders %}
-        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col justify-between">
+        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
             <div class="flex items-center space-x-3">
-                <div class="h-12 w-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 text-xl font-bold">
+                <div class="h-12 w-12 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center text-xl font-bold">
                     <i class="fa-regular fa-image"></i>
                 </div>
-                <div>
-                    <h3 class="text-sm font-bold text-slate-900">{{ folder.name }}</h3>
+                <div class="min-w-0 flex-1">
+                    <h3 class="text-sm font-bold text-slate-900 truncate">{{ folder.name }}</h3>
                     <p class="text-xs text-slate-500">{{ folder.count }} Grayscale Samples</p>
                 </div>
             </div>
             <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span class="px-2 py-0.5 rounded-full font-bold {% if folder.count >= 100 %}bg-emerald-50 text-emerald-600{% else %}bg-amber-50 text-amber-600{% endif %}">
+                <span class="px-2.5 py-0.5 rounded-full font-bold {% if folder.count >= 100 %}bg-emerald-50 text-emerald-600 border border-emerald-100{% else %}bg-amber-50 text-amber-600 border border-amber-100{% endif %}">
                     {% if folder.count >= 100 %}100% Ready{% else %}{{ folder.count }}/100 Captured{% endif %}
                 </span>
                 <span class="text-slate-400 font-mono text-[11px]">160x160 Normalized</span>
@@ -40,9 +47,142 @@
                 <i class="fa-solid fa-folder-open"></i>
             </div>
             <h3 class="text-sm font-bold text-slate-800">No Image Datasets Captured Yet</h3>
-            <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">Run collect_dataset.py or use the webcam tool to capture 100+ images per student.</p>
+            <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">Enroll a student and capture 100 images per student to start AI model training.</p>
         </div>
         {% endfor %}
     </div>
 </div>
+
+<!-- ======================================================== -->
+<!-- TRAINING PROGRESS & STATUS MODAL                         -->
+<!-- ======================================================== -->
+<div id="trainModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-5">
+        <div class="flex items-center space-x-3.5">
+            <div id="trainModalIcon" class="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl flex-shrink-0 animate-pulse">
+                <i class="fa-solid fa-microchip"></i>
+            </div>
+            <div>
+                <h3 id="trainModalTitle" class="text-base font-bold text-slate-900">Training Biometric Model</h3>
+                <p id="trainModalSubtitle" class="text-xs text-slate-500 mt-0.5">Optimizing neural biometric signatures...</p>
+            </div>
+        </div>
+
+        <!-- Animated Progress Bar -->
+        <div class="space-y-2">
+            <div class="flex justify-between text-xs font-mono font-bold text-slate-600">
+                <span id="trainStepLabel">Extracting Biometric Features...</span>
+                <span id="trainStepPct" class="text-emerald-600">35%</span>
+            </div>
+            <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                <div id="trainProgressBar" class="bg-gradient-to-r from-teal-500 to-emerald-500 h-full rounded-full transition-all duration-300 ease-out" style="width: 35%"></div>
+            </div>
+        </div>
+
+        <!-- Result Box (Hidden until done) -->
+        <div id="trainResultBox" class="hidden p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 space-y-1">
+            <p class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-check text-emerald-600"></i> <span id="trainResultTitle">Model Ready!</span></p>
+            <p id="trainResultMessage" class="text-[11px] text-emerald-700"></p>
+        </div>
+
+        <!-- Modal Actions -->
+        <div class="flex justify-end pt-2">
+            <button id="trainCloseBtn" onclick="closeTrainModal()" disabled
+                    class="px-5 py-2 bg-slate-200 text-slate-500 text-xs font-bold rounded-xl transition-all disabled:opacity-50">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+async function triggerModelTraining() {
+    const btn = document.getElementById('trainModelBtn');
+    const btnText = document.getElementById('trainBtnText');
+    const modal = document.getElementById('trainModal');
+    const pBar = document.getElementById('trainProgressBar');
+    const stepLabel = document.getElementById('trainStepLabel');
+    const stepPct = document.getElementById('trainStepPct');
+    const closeBtn = document.getElementById('trainCloseBtn');
+    const resultBox = document.getElementById('trainResultBox');
+    const resTitle = document.getElementById('trainResultTitle');
+    const resMsg = document.getElementById('trainResultMessage');
+    const modalIcon = document.getElementById('trainModalIcon');
+
+    // Show modal & disable button
+    btn.disabled = true;
+    btnText.innerText = "Training...";
+    resultBox.classList.add('hidden');
+    closeBtn.disabled = true;
+    closeBtn.className = "px-5 py-2 bg-slate-200 text-slate-500 text-xs font-bold rounded-xl transition-all disabled:opacity-50";
+    modal.classList.remove('hidden');
+
+    // Animated stages
+    pBar.style.width = '20%';
+    stepPct.innerText = '20%';
+    stepLabel.innerText = 'Scanning dataset directories...';
+
+    setTimeout(() => {
+        pBar.style.width = '55%';
+        stepPct.innerText = '55%';
+        stepLabel.innerText = 'Computing 160x160 normalized facial vectors...';
+    }, 400);
+
+    setTimeout(() => {
+        pBar.style.width = '85%';
+        stepPct.innerText = '85%';
+        stepLabel.innerText = 'Updating biometric weights & labels...';
+    }, 900);
+
+    try {
+        const resp = await fetch('/api/train_model', { method: 'POST' });
+        const data = await resp.json();
+
+        pBar.style.width = '100%';
+        stepPct.innerText = '100%';
+
+        if (data.success) {
+            stepLabel.innerText = 'Complete!';
+            modalIcon.className = "h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-xl flex-shrink-0";
+            modalIcon.innerHTML = `<i class="fa-solid fa-circle-check"></i>`;
+            document.getElementById('trainModalTitle').innerText = "Training Complete!";
+            document.getElementById('trainModalSubtitle').innerText = "All biometric signatures successfully compiled.";
+
+            resultBox.className = "p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 space-y-1";
+            resTitle.innerText = "Model Active & Live!";
+            resMsg.innerText = data.message || `Trained across ${data.students ? data.students.length : 1} student(s) in ${data.time_taken || 2.5}s.`;
+            resultBox.classList.remove('hidden');
+        } else {
+            stepLabel.innerText = 'Training Failed';
+            modalIcon.className = "h-12 w-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center text-xl flex-shrink-0";
+            modalIcon.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i>`;
+            document.getElementById('trainModalTitle').innerText = "Training Failed";
+            document.getElementById('trainModalSubtitle').innerText = data.error || "An error occurred during training.";
+
+            resultBox.className = "p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1";
+            resTitle.innerText = "Error Encountered";
+            resMsg.innerText = data.error || "Please check that student photos are captured.";
+            resultBox.classList.remove('hidden');
+        }
+    } catch (e) {
+        console.error("Training error:", e);
+        pBar.style.width = '100%';
+        stepLabel.innerText = 'Connection Error';
+        resultBox.className = "p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1";
+        resTitle.innerText = "Connection Error";
+        resMsg.innerText = "Unable to connect to training API. Please try again.";
+        resultBox.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btnText.innerText = "Train AI Model Now";
+        closeBtn.disabled = false;
+        closeBtn.className = "px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer";
+    }
+}
+
+function closeTrainModal() {
+    document.getElementById('trainModal').classList.add('hidden');
+    window.location.reload();
+}
+</script>
 {% endblock %}

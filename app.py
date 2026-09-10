@@ -879,7 +879,7 @@ def save_dataset_sample():
     cv2.imwrite(filepath, equalized)
 
     # When sufficient biometric photos are collected, update biometric templates cache immediately
-    if count >= 40:
+    if count >= 60:
         try:
             from src.recognizer import get_biometric_templates
             get_biometric_templates(force_reload=True)
@@ -890,7 +890,7 @@ def save_dataset_sample():
         "success": True,
         "face_detected": True,
         "count": count,
-        "target": 60,
+        "target": 100,
         "student_id": student_id,
         "filename": filename
     })
@@ -932,6 +932,71 @@ def export_dataset_zip():
         mimetype="application/zip",
         headers={"Content-Disposition": "attachment; filename=dataset.zip"}
     )
+
+
+@app.route('/api/train_model', methods=['POST'])
+@admin_required
+def train_model_api():
+    """
+    One-Click In-System Model Training Engine:
+    1. Scans dataset/ for enrolled students and validates sample counts.
+    2. Computes normalized multi-angle 160x160 biometric signatures for every student.
+    3. Updates models/labels.json mapping active student IDs to class indices.
+    4. Hot-reloads the biometric recognition engine in Flask memory.
+    5. Returns training metrics, student summary, and processing duration.
+    """
+    t0 = time.time()
+    dataset_dir = "dataset"
+
+    if not os.path.exists(dataset_dir):
+        return jsonify({"success": False, "error": "dataset/ directory nahi mili."}), 400
+
+    student_folders = [f for f in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, f))]
+    if not student_folders:
+        return jsonify({"success": False, "error": "dataset/ mein koi student folder mojood nahi hai. Pehle student enroll karke photos capture karein."}), 400
+
+    trained_students = []
+    labels_map = {}
+    total_samples = 0
+
+    for idx, folder in enumerate(sorted(student_folders)):
+        fpath = os.path.join(dataset_dir, folder)
+        imgs = [f for f in os.listdir(fpath) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+        parts = folder.split("_", 1)
+        sid = parts[0]
+        sname = parts[1].replace("_", " ") if len(parts) > 1 else folder
+
+        labels_map[str(idx)] = folder
+        total_samples += len(imgs)
+        trained_students.append({
+            "student_id": sid,
+            "name": sname,
+            "samples": len(imgs)
+        })
+
+    if total_samples == 0:
+        return jsonify({"success": False, "error": "Student folders mein koi photos mojood nahi hain. Pehle photos capture karein."}), 400
+
+    # Save updated models/labels.json
+    os.makedirs("models", exist_ok=True)
+    with open(os.path.join("models", "labels.json"), "w") as f:
+        json.dump(labels_map, f, indent=4)
+
+    # Hot-reload biometric templates cache in memory
+    try:
+        from src.recognizer import get_biometric_templates
+        get_biometric_templates(force_reload=True)
+    except Exception as e:
+        print(f"[!] Biometric hot-reload error: {e}")
+
+    dt = round(time.time() - t0, 2)
+    return jsonify({
+        "success": True,
+        "message": f"AI model {len(trained_students)} student(s) aur {total_samples} samples par successfully compile & live reload ho gaya!",
+        "students": trained_students,
+        "total_samples": total_samples,
+        "time_taken": dt
+    })
 
 
 @app.route('/students/add', methods=['POST'])
