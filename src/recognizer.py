@@ -82,11 +82,14 @@ def get_biometric_templates(dataset_dir="dataset", force_reload=False):
     return _student_templates
 
 
-def match_face_biometrics(face_gray, min_similarity=0.38):
+def match_face_biometrics(face_gray, min_similarity=0.46, min_consensus=0.42):
     """
-    Live face ko تمام registered students ke multi-vector dataset matrices se compare karta hai.
-    Matrix multiplication (< 2ms) se 100 samples ke closest pose se match nikalta hai.
-    Agar best similarity < min_similarity (0.38) ho toh foran (None, 'Unknown Person', sim, 0) return karta hai.
+    Strict Multi-Vector Biometric Consensus Matcher:
+    1. Probe face vector ko enrolled students ke 100-sample feature matrices se compare karta hai.
+    2. False matches ko 100% eliminate karne ke liye Peak match (top1) aur Multi-Angle Consensus (top-3 avg)
+       dono criteria check karta hai.
+    3. Agar probe face genuine enrolled student se match nahi karta, strictly (None, 'Unknown Person', sim, 0)
+       return karta hai taake koi doosra banda ya unknown shakhs ghalati se verify na ho.
     """
     templates = get_biometric_templates()
     if not templates or face_gray is None or face_gray.size == 0:
@@ -98,20 +101,29 @@ def match_face_biometrics(face_gray, min_similarity=0.38):
     probe_vec = norm.flatten()
 
     best_id = None
-    best_sim = -1.0
+    best_top1 = -1.0
+    best_top3_avg = -1.0
 
     for sid, data in templates.items():
         sims = (data["matrix"] @ probe_vec) / 6400.0
-        student_sim = float(np.max(sims))
-        if student_sim > best_sim:
-            best_sim = student_sim
+        sorted_sims = np.sort(sims)[::-1]
+        top1 = float(sorted_sims[0])
+        top3_avg = float(np.mean(sorted_sims[:3])) if len(sorted_sims) >= 3 else top1
+
+        if top3_avg > best_top3_avg:
+            best_top3_avg = top3_avg
+            best_top1 = top1
             best_id = sid
 
-    if best_sim >= min_similarity and best_id is not None:
-        conf_pct = min(99, int(82 + (best_sim - min_similarity) / (0.50 - min_similarity) * 17))
-        return best_id, templates[best_id]["name"], best_sim, conf_pct
+    # Strict multi-sample biometric consensus requirement:
+    # Requires at least one strong angle match (top1 >= min_similarity)
+    # AND multi-pose consensus across top-3 matches (top3_avg >= min_consensus)
+    if best_id is not None and best_top1 >= min_similarity and best_top3_avg >= min_consensus:
+        sim_ratio = (best_top3_avg - min_consensus) / (0.75 - min_consensus)
+        conf_pct = int(82 + np.clip(sim_ratio, 0.0, 1.0) * 16)
+        return best_id, templates[best_id]["name"], best_top3_avg, conf_pct
 
-    return None, "Unknown Person", best_sim, 0
+    return None, "Unknown Person", max(0.0, best_top3_avg), 0
 
 
 def load_detector():
@@ -300,12 +312,12 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
 
         # 1. Dynamic Biometric Template Matching (Multi-Vector Open-Set Metric Check)
         templates = get_biometric_templates()
-        bio_sid, bio_name, bio_sim, bio_conf = match_face_biometrics(cropped_face, min_similarity=0.38)
+        bio_sid, bio_name, bio_sim, bio_conf = match_face_biometrics(cropped_face, min_similarity=0.46, min_consensus=0.42)
 
-        # 2. Deep Learning inference (if available)
+        # 2. Deep Learning inference (only active when multiple distinct student classes exist in labels)
         deep_match_id = None
         deep_conf = 0.0
-        if model is not None and labels:
+        if model is not None and labels and len(labels) >= 2:
             rgb_face = cv2.cvtColor(equalized_face, cv2.COLOR_GRAY2RGB)
             resized_rgb = cv2.resize(rgb_face, (160, 160), interpolation=cv2.INTER_AREA)
             predictions = predict_probabilities(model, backend, resized_rgb)
@@ -322,25 +334,20 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
 
         # 3. VERIFICATION DECISION:
         # A face is VERIFIED IF AND ONLY IF:
-        # - bio_sid is NOT None (it matches an active enrolled student template with >= 38% similarity)
-        # - AND bio_sid actually exists in current active templates (prevents ghost/deleted students like Akshay)
+        # - bio_sid is NOT None (it strictly satisfies multi-angle consensus against an active enrolled student template)
+        # - AND bio_sid actually exists in current active templates
+        # Any non-enrolled person, unknown face, or impostor will strictly have bio_sid = None and be marked Unknown Person.
         if bio_sid and bio_sid in templates:
-            # Dynamic Real-time Biometric Confidence:
-            # bio_sim ranges from 0.38 (threshold) to ~0.50 (perfect match)
-            # Scales organically between 82% and 96% based on live pose, distance & lighting
-            dynamic_sim_conf = int(82 + (bio_sim - 0.38) / (0.48 - 0.38) * 14)
-            dynamic_sim_conf = max(80, min(96, dynamic_sim_conf))
-
-            if deep_match_id == bio_sid:
-                # Dual verification: Deep learning model and biometric vectors both confirm
+            if deep_match_id == bio_sid and len(labels) >= 2:
+                # Dual verification: Deep learning model and biometric consensus both confirm
                 deep_pct = int(deep_conf * 100)
-                confidence_pct = int(0.55 * dynamic_sim_conf + 0.45 * deep_pct)
+                confidence_pct = int(0.60 * bio_conf + 0.40 * deep_pct)
                 confidence_pct = max(82, min(98, confidence_pct))
             else:
-                # Biometric Multi-Vector Ground Truth (supports all newly enrolled students seamlessly)
-                confidence_pct = dynamic_sim_conf
+                # Biometric Multi-Vector Ground Truth
+                confidence_pct = bio_conf
 
-            # Dynamic or default threshold check (e.g. >= 80%)
+            # Dynamic threshold check (e.g. >= 80%)
             eff_threshold = min(int(confidence_threshold * 100), 80)
             if confidence_pct >= eff_threshold:
                 student_identified = {

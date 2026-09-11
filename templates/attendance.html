@@ -331,6 +331,43 @@
                     </div>
                 </div>
 
+                <!-- STATE 3: UNKNOWN / UNREGISTERED PERSON DETECTED -->
+                <div id="recogUnknownState" class="hidden flex flex-col justify-between h-full space-y-4">
+                    <div>
+                        <div class="flex items-center justify-between pb-4 border-b border-rose-100">
+                            <div class="flex items-center space-x-3">
+                                <div class="h-10 w-10 rounded-xl bg-rose-500 text-white flex items-center justify-center text-lg flex-shrink-0 shadow-md shadow-rose-500/20">
+                                    <i class="fa-solid fa-user-xmark"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-900">Unknown Person</h3>
+                                    <p class="text-[11px] text-rose-600 font-semibold">Biometric Match Failed</p>
+                                </div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
+                                Unverified
+                            </span>
+                        </div>
+
+                        <div class="py-6 text-center space-y-2">
+                            <div class="h-12 w-12 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500 text-xl mx-auto">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                            <h4 class="text-sm font-bold text-slate-800">Unregistered Face Detected</h4>
+                            <p class="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                                This face is not enrolled in the biometric database. Attendance has <strong>not</strong> been marked.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="w-full py-2.5 px-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center justify-center space-x-2 shadow-sm">
+                            <i class="fa-solid fa-ban text-rose-500 text-sm"></i>
+                            <span>Access Denied · Attendance Blocked</span>
+                        </div>
+                    </div>
+                </div>
+
                 <audio id="successChime" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
             </div>
 
@@ -530,6 +567,8 @@ function startClientScanning() {
                 drawAttendanceFaceBoxes(data.faces, video, overlayCanvas);
                 if (data.recognized && data.student) {
                     renderRecognizedCard(data.student);
+                } else if (data.faces && data.faces.length > 0 && !data.recognized) {
+                    renderUnknownFace();
                 }
             }
         } catch (err) {
@@ -551,6 +590,7 @@ function switchView(mode) {
     const camErrorBox = document.getElementById('cam-error-box');
     const idleBox = document.getElementById('recogIdleState');
     const activeBox = document.getElementById('recogActiveState');
+    const unknownBox = document.getElementById('recogUnknownState');
 
     if (mode === 'camera') {
         tableDiv.classList.add('hidden');
@@ -561,6 +601,7 @@ function switchView(mode) {
 
         idleBox.classList.remove('hidden');
         activeBox.classList.add('hidden');
+        if (unknownBox) unknownBox.classList.add('hidden');
         camErrorBox.classList.add('hidden');
         camLoadingBox.classList.remove('hidden');
 
@@ -579,11 +620,30 @@ function switchView(mode) {
     }
 }
 
+let unknownTimeout = null;
+function renderUnknownFace() {
+    const idleBox = document.getElementById('recogIdleState');
+    const activeBox = document.getElementById('recogActiveState');
+    const unknownBox = document.getElementById('recogUnknownState');
+
+    if (activeBox) activeBox.classList.add('hidden');
+    if (idleBox) idleBox.classList.add('hidden');
+    if (unknownBox) unknownBox.classList.remove('hidden');
+
+    if (unknownTimeout) clearTimeout(unknownTimeout);
+    unknownTimeout = setTimeout(() => {
+        if (unknownBox) unknownBox.classList.add('hidden');
+        if (idleBox) idleBox.classList.remove('hidden');
+    }, 2800);
+}
+
 function renderRecognizedCard(data) {
     const idleBox = document.getElementById('recogIdleState');
     const activeBox = document.getElementById('recogActiveState');
+    const unknownBox = document.getElementById('recogUnknownState');
     const pBar = document.getElementById('recogProgressBar');
 
+    if (unknownBox) unknownBox.classList.add('hidden');
     document.getElementById('recogName').innerText = data.name || data.student_id;
     document.getElementById('recogRoll').innerText = data.student_id;
     document.getElementById('recogClass').innerText = data.department || 'BAI-3B';
@@ -621,6 +681,8 @@ function pollFaceRecognition() {
         .then(data => {
             if (data.active && data.student_id) {
                 renderRecognizedCard(data);
+            } else if (data.unknown) {
+                renderUnknownFace();
             }
         })
         .catch(e => console.log(e));

@@ -179,6 +179,13 @@ function checkLiveRecognition() {
                 document.getElementById('status-badge').innerText = "Unknown Face";
                 document.getElementById('student-name').innerText = "Unregistered Person";
                 document.getElementById('student-meta').innerText = "Not found in student database";
+                document.getElementById('student-timestamps').classList.add('hidden');
+            } else {
+                document.getElementById('status-badge').className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-700 text-slate-300";
+                document.getElementById('status-badge').innerText = "Awaiting Face...";
+                document.getElementById('student-name').innerText = "No Face In Focus";
+                document.getElementById('student-meta').innerText = "Please position your face clearly in the camera";
+                document.getElementById('student-timestamps').classList.add('hidden');
             }
         })
         .catch(err => console.log('Polling...', err));

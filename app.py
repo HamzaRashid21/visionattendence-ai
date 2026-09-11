@@ -364,7 +364,9 @@ class GlobalCameraManager:
                     continue
 
                 frame = cv2.flip(frame, 1)
-                annotated_frame, recognized_list = process_frame(frame, confidence_threshold=current_threshold)
+                annotated_frame, recognized_list, detected_boxes = process_frame(
+                    frame, confidence_threshold=current_threshold, return_boxes=True
+                )
 
                 if recognized_list:
                     top_match = recognized_list[0]
@@ -391,6 +393,18 @@ class GlobalCameraManager:
                             "unknown": False,
                             "last_update": time.time()
                         }
+                elif detected_boxes:
+                    _live_status = {
+                        "active": False,
+                        "student_id": None,
+                        "name": "Unknown Face",
+                        "department": "Unregistered",
+                        "confidence": 0,
+                        "in_time": None,
+                        "duration_minutes": 0,
+                        "unknown": True,
+                        "last_update": time.time()
+                    }
 
                 ret, buffer = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if ret:
@@ -534,6 +548,18 @@ def process_webcam_frame_api():
                 "confidence": top_match["confidence"],
                 "in_time": logged_time,
                 "message": msg
+            }
+        elif detected_boxes:
+            _live_status = {
+                "active": False,
+                "student_id": None,
+                "name": "Unknown Face",
+                "department": "Unregistered",
+                "confidence": 0,
+                "in_time": None,
+                "duration_minutes": 0,
+                "unknown": True,
+                "last_update": time.time()
             }
 
         return jsonify(response_payload)
