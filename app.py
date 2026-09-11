@@ -603,25 +603,8 @@ def dashboard():
 
     enrolled_classes_count = AcademicClass.query.count()
 
-    # Dynamic trained model classes
-    model_classes_list = []
-    labels_file = os.path.join("models", "labels.json")
-    if os.path.exists(labels_file):
-        try:
-            with open(labels_file, "r") as f:
-                raw_labels = json.load(f)
-                for k in sorted(raw_labels.keys(), key=lambda x: int(x)):
-                    val = raw_labels[k]
-                    parts = val.split("_", 1)
-                    clean_name = parts[1].replace("_", " ") if len(parts) > 1 else val
-                    model_classes_list.append(clean_name)
-        except Exception:
-            pass
-    if model_classes_list:
-        model_classes_str = ", ".join(model_classes_list) if len(model_classes_list) > 2 else " & ".join(model_classes_list)
-    else:
-        sample_students = [s.name for s in Student.query.limit(3).all()]
-        model_classes_str = ", ".join(sample_students) if sample_students else "All Enrolled Students"
+    # Active academic cohort / enrollment coverage
+    model_classes_str = "Batch BAI-3B · All Enrolled Students"
 
     now = datetime.now()
     today_str = now.strftime("%a, %d %b %Y")
