@@ -17,9 +17,9 @@ from datetime import datetime, date
 import pandas as pd
 from src.database import db, Student, Attendance, ProxyAlert
 
-# Anti-spam cooldown: Ek student agar abhi scan hua hai to agle 60 seconds tak 
-# uski baar baar duplicate entry na ho.
-SCAN_COOLDOWN_SECONDS = 60
+# Anti-spam cooldown: Ek student agar abhi scan hua hai to agle 20 seconds tak 
+# uski baar baar duplicate entry na ho (Smooth live experience).
+SCAN_COOLDOWN_SECONDS = 20
 _recent_scans = {}  # {student_id: timestamp}
 
 

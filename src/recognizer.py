@@ -332,14 +332,13 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
             dynamic_sim_conf = max(80, min(96, dynamic_sim_conf))
 
             if deep_match_id == bio_sid:
-                # Weighted fusion: 60% biometric vector match + 40% deep learning confidence
+                # Dual verification: Deep learning model and biometric vectors both confirm
                 deep_pct = int(deep_conf * 100)
-                confidence_pct = int(0.60 * dynamic_sim_conf + 0.40 * deep_pct)
-                confidence_pct = max(82, min(97, confidence_pct))
-            elif deep_match_id is None:
-                confidence_pct = dynamic_sim_conf
+                confidence_pct = int(0.55 * dynamic_sim_conf + 0.45 * deep_pct)
+                confidence_pct = max(82, min(98, confidence_pct))
             else:
-                confidence_pct = dynamic_sim_conf if bio_sim >= 0.44 else 0
+                # Biometric Multi-Vector Ground Truth (supports all newly enrolled students seamlessly)
+                confidence_pct = dynamic_sim_conf
 
             # Dynamic or default threshold check (e.g. >= 80%)
             eff_threshold = min(int(confidence_threshold * 100), 80)

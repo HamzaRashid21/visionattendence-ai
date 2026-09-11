@@ -68,7 +68,7 @@
                     <label class="block text-xs font-bold text-slate-700 mb-1.5">Username, Email, or Roll Number</label>
                     <div class="relative">
                         <i class="fa-regular fa-user absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                        <input type="text" name="login_id" id="loginIdInput" required placeholder="e.g. admin or CS-001" value="admin"
+                        <input type="text" name="login_id" id="loginIdInput" required placeholder="e.g. admin or CS-109" value="admin"
                                class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-800 font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500">
                     </div>
                 </div>
@@ -91,14 +91,18 @@
             <!-- Subtle Demo Credentials Helper -->
             <div class="pt-4 border-t border-slate-100 text-center space-y-2.5">
                 <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quick Fill Demo Accounts</p>
-                <div class="flex items-center justify-center gap-2">
+                <div class="flex flex-wrap items-center justify-center gap-2">
                     <button type="button" onclick="quickFill('admin', 'admin123')" 
                             class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl transition-colors flex items-center gap-1.5">
                         <i class="fa-solid fa-user-shield text-slate-500"></i> Admin
                     </button>
-                    <button type="button" onclick="quickFill('CS-001', 'student123')" 
+                    <button type="button" onclick="quickFill('CS-109', 'student123')" 
                             class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl transition-colors flex items-center gap-1.5">
-                        <i class="fa-solid fa-user-graduate text-slate-500"></i> Student (CS-001)
+                        <i class="fa-solid fa-user-graduate text-slate-500"></i> Hamza (CS-109)
+                    </button>
+                    <button type="button" onclick="quickFill('CS-101', 'student123')" 
+                            class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl transition-colors flex items-center gap-1.5">
+                        <i class="fa-solid fa-user-graduate text-slate-500"></i> Shafi (CS-101)
                     </button>
                 </div>
             </div>

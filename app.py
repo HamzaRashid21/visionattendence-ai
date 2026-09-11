@@ -200,7 +200,7 @@ def get_notifications():
         notifications.append({
             "id": r.id,
             "title": f"{r.student.name if r.student else r.student_id} marked Present",
-            "meta": f"{r.student.department if r.student else 'BCS - 1A'} · {r.in_time or 'Just now'}",
+            "meta": f"{r.student.department if r.student else 'BAI-3B'} · {r.in_time or 'Just now'}",
             "type": "success"
         })
     alerts = ProxyAlert.query.order_by(ProxyAlert.timestamp.desc()).limit(2).all()
@@ -242,11 +242,11 @@ def kiosk():
 @student_required
 def student_dashboard():
     """Student personal portal view."""
-    student_id = session.get('student_id', 'CS-001')
-    student = Student.query.filter_by(student_id=student_id).first()
+    student_id = session.get('student_id')
+    student = Student.query.filter_by(student_id=student_id).first() if student_id else None
 
     if not student:
-        flash("Student profile not found.", "error")
+        flash("Student profile not found. Please sign in with a valid student account.", "error")
         return redirect(url_for('login'))
 
     my_records = Attendance.query.filter_by(student_id=student_id).order_by(Attendance.date.desc()).all()
@@ -505,7 +505,7 @@ def process_webcam_frame_api():
             top_match = recognized_students[0]
             status_ok, msg, att_data = record_attendance(top_match["student_id"])
             stu = Student.query.filter_by(student_id=top_match["student_id"]).first()
-            dept = stu.department if stu else "Computer Science"
+            dept = stu.department if stu else "BAI-3B"
             now_str = datetime.now().strftime("%I:%M %p")
 
             if att_data and att_data.get("in_time"):
