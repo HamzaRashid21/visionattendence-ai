@@ -1207,38 +1207,26 @@ def _run_training_background(dataset_dir, student_info, labels_map):
             plt.xticks(rotation=45, ha="right"); plt.tight_layout()
             plt.savefig(os.path.join("models", "confusion_matrix.png"), dpi=150)
             plt.close(fig2)
-            _log("Confusion matrix saved: models/confusion_matrix.png")
+            _log("Confusion matrix saved.")
         except Exception as cm_err:
-            _log(f"[!] Confusion matrix error (non-critical): {cm_err}")
+            _log(f"[!] Confusion matrix skip: {cm_err}")
 
-        # -- Step 7: TFLite conversion (with timeout — Railway pe hang ho sakta hai) --------
-        _log("TFLite conversion shuru...")
-        _set("AI model optimize ho raha hai...", 90)
-        tflite_done = [False]
-        tflite_err_msg = [None]
-
-        def _do_tflite():
+        # -- Step 7: TFLite (fire-and-forget — never blocks) ------------------
+        _set("AI model finalize ho raha hai...", 92)
+        def _do_tflite_bg():
             try:
-                converter = tf.lite.TFLiteConverter.from_keras_model(model)
-                converter.optimizations = [tf.lite.Optimize.DEFAULT]
-                tflite_bytes = converter.convert()
-                tflite_path = os.path.join("models", "attendance_model.tflite")
-                with open(tflite_path, "wb") as _f:
-                    _f.write(tflite_bytes)
-                size_mb = len(tflite_bytes) / (1024 * 1024)
-                _log(f"TFLite exported ({size_mb:.2f} MB)")
-                tflite_done[0] = True
+                conv = tf.lite.TFLiteConverter.from_keras_model(model)
+                conv.optimizations = [tf.lite.Optimize.DEFAULT]
+                tb = conv.convert()
+                with open(os.path.join("models", "attendance_model.tflite"), "wb") as _f:
+                    _f.write(tb)
+                print(f"[TrainEngine] TFLite exported ({len(tb)/(1024*1024):.2f} MB)")
             except Exception as _te:
-                tflite_err_msg[0] = str(_te)
-
-        tflite_thread = threading.Thread(target=_do_tflite, daemon=True)
-        tflite_thread.start()
-        tflite_thread.join(timeout=60)  # max 60 seconds — phir skip
-        if not tflite_done[0]:
-            _log(f"[!] TFLite skip (timeout/error): {tflite_err_msg[0] or 'timed out'}")
+                print(f"[TrainEngine] TFLite skip: {_te}")
+        threading.Thread(target=_do_tflite_bg, daemon=True).start()
 
         # -- Step 8: Hot-reload recognition engine ----------------------------
-        _set("Recognition engine hot-reload ho raha hai...", 96)
+        _set("Recognition engine reload ho raha hai...", 96)
         try:
             with app.app_context():
                 from src import recognizer as _rec
