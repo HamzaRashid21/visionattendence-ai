@@ -63,8 +63,8 @@
                 <i class="fa-solid fa-microchip"></i>
             </div>
             <div>
-                <h3 id="trainModalTitle" class="text-base font-bold text-slate-900">Training Biometric Model</h3>
-                <p id="trainModalSubtitle" class="text-xs text-slate-500 mt-0.5">Optimizing neural biometric signatures...</p>
+                <h3 id="trainModalTitle" class="text-base font-bold text-slate-900">AI Model Training</h3>
+                <p id="trainModalSubtitle" class="text-xs text-slate-500 mt-0.5">Biometric AI train ho raha hai, please wait...</p>
             </div>
         </div>
 
@@ -122,7 +122,7 @@ async function triggerModelTraining() {
     stepPct.innerText = '1%';
     stepLabel.innerText = 'Training request bhej raha hai...';
     document.getElementById('trainModalTitle').innerText = "AI Model Training";
-    document.getElementById('trainModalSubtitle').innerText = "MobileNetV2 Transfer Learning — background mein chal raha hai...";
+    document.getElementById('trainModalSubtitle').innerText = "Biometric AI train ho raha hai, please wait...";
     modalIcon.className = "h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl flex-shrink-0 animate-pulse";
     modalIcon.innerHTML = `<i class="fa-solid fa-microchip"></i>`;
 

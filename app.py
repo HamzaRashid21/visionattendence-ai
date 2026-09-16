@@ -1211,20 +1211,31 @@ def _run_training_background(dataset_dir, student_info, labels_map):
         except Exception as cm_err:
             _log(f"[!] Confusion matrix error (non-critical): {cm_err}")
 
-        # -- Step 7: TFLite conversion ----------------------------------------
-        _log("TFLite conversion shuru (edge optimization)...")
-        _set("TFLite model convert ho raha hai...", 90)
-        try:
-            converter = tf.lite.TFLiteConverter.from_keras_model(model)
-            converter.optimizations = [tf.lite.Optimize.DEFAULT]
-            tflite_model = converter.convert()
-            tflite_path = os.path.join("models", "attendance_model.tflite")
-            with open(tflite_path, "wb") as f:
-                f.write(tflite_model)
-            size_mb = len(tflite_model) / (1024 * 1024)
-            _log(f"TFLite exported: {tflite_path} ({size_mb:.2f} MB)")
-        except Exception as tflite_err:
-            _log(f"[!] TFLite conversion warning: {tflite_err}")
+        # -- Step 7: TFLite conversion (with timeout — Railway pe hang ho sakta hai) --------
+        _log("TFLite conversion shuru...")
+        _set("AI model optimize ho raha hai...", 90)
+        tflite_done = [False]
+        tflite_err_msg = [None]
+
+        def _do_tflite():
+            try:
+                converter = tf.lite.TFLiteConverter.from_keras_model(model)
+                converter.optimizations = [tf.lite.Optimize.DEFAULT]
+                tflite_bytes = converter.convert()
+                tflite_path = os.path.join("models", "attendance_model.tflite")
+                with open(tflite_path, "wb") as _f:
+                    _f.write(tflite_bytes)
+                size_mb = len(tflite_bytes) / (1024 * 1024)
+                _log(f"TFLite exported ({size_mb:.2f} MB)")
+                tflite_done[0] = True
+            except Exception as _te:
+                tflite_err_msg[0] = str(_te)
+
+        tflite_thread = threading.Thread(target=_do_tflite, daemon=True)
+        tflite_thread.start()
+        tflite_thread.join(timeout=60)  # max 60 seconds — phir skip
+        if not tflite_done[0]:
+            _log(f"[!] TFLite skip (timeout/error): {tflite_err_msg[0] or 'timed out'}")
 
         # -- Step 8: Hot-reload recognition engine ----------------------------
         _set("Recognition engine hot-reload ho raha hai...", 96)
