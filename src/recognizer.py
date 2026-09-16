@@ -82,7 +82,7 @@ def get_biometric_templates(dataset_dir="dataset", force_reload=False):
     return _student_templates
 
 
-def match_face_biometrics(face_gray, min_similarity=0.52, min_consensus=0.47):
+def match_face_biometrics(face_gray, min_similarity=0.72, min_consensus=0.65):
     """
     Strict Multi-Vector Biometric Consensus Matcher (Improved):
     1. Probe face vector ko enrolled students ke 100-sample feature matrices se compare karta hai.
@@ -110,6 +110,7 @@ def match_face_biometrics(face_gray, min_similarity=0.52, min_consensus=0.47):
     best_id = None
     best_top1 = -1.0
     best_top3_avg = -1.0
+    best_top5_avg = -1.0
 
     for sid, data in templates.items():
         matrix = data["matrix"]  # shape: (N, 6400)
@@ -125,17 +126,23 @@ def match_face_biometrics(face_gray, min_similarity=0.52, min_consensus=0.47):
         sorted_sims = np.sort(cos_sims)[::-1]
         top1 = float(sorted_sims[0])
         top3_avg = float(np.mean(sorted_sims[:3])) if len(sorted_sims) >= 3 else top1
+        top5_avg = float(np.mean(sorted_sims[:5])) if len(sorted_sims) >= 5 else top3_avg
 
         if top3_avg > best_top3_avg:
             best_top3_avg = top3_avg
             best_top1 = top1
+            best_top5_avg = top5_avg
             best_id = sid
 
-    # Strict multi-sample biometric consensus requirement:
-    # top1 >= min_similarity (strong single-angle match)
-    # top3_avg >= min_consensus (consistent multi-angle agreement)
-    if best_id is not None and best_top1 >= min_similarity and best_top3_avg >= min_consensus:
-        sim_ratio = (best_top3_avg - min_consensus) / (0.85 - min_consensus)
+    # TRIPLE-GATE: All three must pass to avoid false positives:
+    # Gate 1: top1   >= min_similarity  (best single sample strong match)
+    # Gate 2: top3_avg >= min_consensus  (consistent across top-3 angles)
+    # Gate 3: top5_avg >= min_consensus * 0.92 (doesn't fall off at top-5)
+    if (best_id is not None
+            and best_top1 >= min_similarity
+            and best_top3_avg >= min_consensus
+            and best_top5_avg >= min_consensus * 0.92):
+        sim_ratio = (best_top3_avg - min_consensus) / (0.95 - min_consensus)
         conf_pct = int(82 + np.clip(sim_ratio, 0.0, 1.0) * 16)
         return best_id, templates[best_id]["name"], best_top3_avg, conf_pct
 
@@ -328,12 +335,15 @@ def process_frame(frame, confidence_threshold=0.80, return_boxes=False):
 
         # 1. Dynamic Biometric Template Matching (Multi-Vector Open-Set Metric Check)
         templates = get_biometric_templates()
-        bio_sid, bio_name, bio_sim, bio_conf = match_face_biometrics(cropped_face, min_similarity=0.46, min_consensus=0.42)
+        # STRICT thresholds: 0.72 top1 + 0.65 top3 eliminates almost all false positives
+        bio_sid, bio_name, bio_sim, bio_conf = match_face_biometrics(cropped_face, min_similarity=0.72, min_consensus=0.65)
 
         # 2. Deep Learning inference (only active when multiple distinct student classes exist in labels)
         deep_match_id = None
         deep_conf = 0.0
-        if model is not None and labels and len(labels) >= 1:
+        # IMPORTANT: Single-class softmax ALWAYS predicts that one class — useless for verification.
+        # Only enable DL when >= 2 distinct enrolled students exist so margin check is meaningful.
+        if model is not None and labels and len(labels) >= 2:
             rgb_face = cv2.cvtColor(equalized_face, cv2.COLOR_GRAY2RGB)
             resized_rgb = cv2.resize(rgb_face, (160, 160), interpolation=cv2.INTER_AREA)
             predictions = predict_probabilities(model, backend, resized_rgb)

@@ -944,20 +944,46 @@ def export_dataset_zip():
 
 
 # ============================================================
-# Deep Learning Training Engine — Global Training State
+# Deep Learning Training Engine — File-Based State
+# (In-memory dict Railway/Gunicorn multi-worker mein kaam nahi
+#  karta — har worker ki apni memory hoti hai. JSON file sab
+#  workers ke liye common hai.)
 # ============================================================
-_training_state = {
-    "status": "idle",          # idle | running | done | error
-    "progress": 0,             # 0-100 percent
-    "stage": "",               # current stage message
-    "final_accuracy": None,    # float, best val accuracy
+_TRAIN_STATUS_FILE = os.path.join("instance", "train_status.json")
+_training_lock = threading.Lock()
+
+_DEFAULT_TRAIN_STATE = {
+    "status": "idle",
+    "progress": 0,
+    "stage": "",
+    "final_accuracy": None,
     "students": [],
     "total_samples": 0,
     "time_taken": None,
     "error": None,
     "log": []
 }
-_training_lock = threading.Lock()
+
+
+def _read_train_state():
+    """JSON file se current training state padhta hai."""
+    try:
+        if os.path.exists(_TRAIN_STATUS_FILE):
+            with open(_TRAIN_STATUS_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return dict(_DEFAULT_TRAIN_STATE)
+
+
+def _write_train_state(updates: dict):
+    """Training state JSON file mein save karta hai (thread-safe)."""
+    with _training_lock:
+        state = _read_train_state()
+        state.update(updates)
+        os.makedirs("instance", exist_ok=True)
+        with open(_TRAIN_STATUS_FILE, "w") as f:
+            json.dump(state, f)
 
 
 def _run_training_background(dataset_dir, student_info, labels_map):
@@ -965,18 +991,17 @@ def _run_training_background(dataset_dir, student_info, labels_map):
     Background thread mein actual MobileNetV2 transfer learning training run karta hai.
     Isi notebook (model_training.ipynb) ka same architecture use karta hai.
     """
-    global _training_state
     import time as _time
 
     def _log(msg):
         print(f"[TrainEngine] {msg}")
-        with _training_lock:
-            _training_state["log"].append(msg)
+        # Append to log list in file
+        state = _read_train_state()
+        state["log"] = state.get("log", []) + [msg]
+        _write_train_state({"log": state["log"]})
 
     def _set(stage, progress):
-        with _training_lock:
-            _training_state["stage"] = stage
-            _training_state["progress"] = progress
+        _write_train_state({"stage": stage, "progress": progress})
 
     t0 = _time.time()
     try:
@@ -1220,27 +1245,25 @@ def _run_training_background(dataset_dir, student_info, labels_map):
         dt = round(_time.time() - t0, 2)
         _log(f"Training complete in {dt}s. Best val accuracy: {best_val_acc*100:.1f}%")
 
-        with _training_lock:
-            _training_state.update({
-                "status": "done",
-                "progress": 100,
-                "stage": f"Training mukammal! Best Accuracy: {best_val_acc*100:.1f}%",
-                "final_accuracy": round(best_val_acc * 100, 1),
-                "time_taken": dt
-            })
+        _write_train_state({
+            "status": "done",
+            "progress": 100,
+            "stage": f"Training mukammal! Best Accuracy: {best_val_acc*100:.1f}%",
+            "final_accuracy": round(best_val_acc * 100, 1),
+            "time_taken": dt
+        })
 
     except Exception as e:
         import traceback
         err_msg = str(e)
         _log(f"[FATAL ERROR] Training fail: {err_msg}")
         _log(traceback.format_exc())
-        with _training_lock:
-            _training_state.update({
-                "status": "error",
-                "progress": 0,
-                "stage": f"Error: {err_msg}",
-                "error": err_msg
-            })
+        _write_train_state({
+            "status": "error",
+            "progress": 0,
+            "stage": f"Error: {err_msg[:200]}",
+            "error": err_msg[:500]
+        })
 
 
 @app.route('/api/train_model', methods=['POST'])
@@ -1253,14 +1276,12 @@ def train_model_api():
     - /api/train_status se real-time progress milta hai
     - .h5, .tflite, labels.json, training_curves.png, confusion_matrix.png sab generate karta hai
     """
-    global _training_state
-
-    with _training_lock:
-        if _training_state["status"] == "running":
-            return jsonify({
-                "success": False,
-                "error": "Training already chal rahi hai! Pehli training khatam hone do."
-            }), 409
+    current = _read_train_state()
+    if current.get("status") == "running":
+        return jsonify({
+            "success": False,
+            "error": "Training already chal rahi hai! Pehli training khatam hone do."
+        }), 409
 
     dataset_dir = "dataset"
 
@@ -1299,19 +1320,18 @@ def train_model_api():
     with open(os.path.join("models", "labels.json"), "w") as f:
         json.dump(labels_map, f, indent=4)
 
-    # Reset training state and launch background thread
-    with _training_lock:
-        _training_state.update({
-            "status": "running",
-            "progress": 1,
-            "stage": "Training thread launch ho rahi hai...",
-            "final_accuracy": None,
-            "students": student_info,
-            "total_samples": total_samples,
-            "time_taken": None,
-            "error": None,
-            "log": [f"Training start: {len(student_info)} students, {total_samples} samples"]
-        })
+    # Reset training state (file-based so all gunicorn workers see it)
+    _write_train_state({
+        "status": "running",
+        "progress": 1,
+        "stage": "Training thread launch ho rahi hai...",
+        "final_accuracy": None,
+        "students": student_info,
+        "total_samples": total_samples,
+        "time_taken": None,
+        "error": None,
+        "log": [f"Training start: {len(student_info)} students, {total_samples} samples"]
+    })
 
     t = threading.Thread(
         target=_run_training_background,
@@ -1332,10 +1352,8 @@ def train_model_api():
 @app.route('/api/train_status')
 @admin_required
 def train_status_api():
-    """Real-time training progress status — UI polling ke liye."""
-    with _training_lock:
-        state_copy = dict(_training_state)
-    return jsonify(state_copy)
+    """Real-time training progress status — UI polling ke liye (file-based, multi-worker safe)."""
+    return jsonify(_read_train_state())
 
 
 @app.route('/students/add', methods=['POST'])
