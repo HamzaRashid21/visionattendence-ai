@@ -117,69 +117,105 @@ async function triggerModelTraining() {
     closeBtn.className = "px-5 py-2 bg-slate-200 text-slate-500 text-xs font-bold rounded-xl transition-all disabled:opacity-50";
     modal.classList.remove('hidden');
 
-    // Animated stages
-    pBar.style.width = '20%';
-    stepPct.innerText = '20%';
-    stepLabel.innerText = 'Scanning dataset directories...';
+    // Reset to initial state
+    pBar.style.width = '1%';
+    stepPct.innerText = '1%';
+    stepLabel.innerText = 'Training request bhej raha hai...';
+    document.getElementById('trainModalTitle').innerText = "AI Model Training";
+    document.getElementById('trainModalSubtitle').innerText = "MobileNetV2 Transfer Learning — background mein chal raha hai...";
+    modalIcon.className = "h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl flex-shrink-0 animate-pulse";
+    modalIcon.innerHTML = `<i class="fa-solid fa-microchip"></i>`;
 
-    const t1 = setTimeout(() => {
-        pBar.style.width = '55%';
-        stepPct.innerText = '55%';
-        stepLabel.innerText = 'Computing 160x160 normalized facial vectors...';
-    }, 400);
+    let pollingInterval = null;
 
-    const t2 = setTimeout(() => {
-        pBar.style.width = '85%';
-        stepPct.innerText = '85%';
-        stepLabel.innerText = 'Updating biometric weights & labels...';
-    }, 900);
+    function stopPolling() {
+        if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+    }
+
+    function setFinished(success) {
+        btn.disabled = false;
+        btnText.innerText = "Train AI Model Now";
+        closeBtn.disabled = false;
+        closeBtn.className = "px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer";
+    }
+
+    async function pollStatus() {
+        try {
+            const statusResp = await fetch('/api/train_status');
+            if (!statusResp.ok) return;
+            const s = await statusResp.json();
+
+            // Live update progress bar from real backend
+            const pct = s.progress || 0;
+            pBar.style.width = pct + '%';
+            stepPct.innerText = pct + '%';
+            stepLabel.innerText = s.stage || 'Processing...';
+
+            if (s.status === 'done') {
+                stopPolling();
+                pBar.style.width = '100%';
+                stepPct.innerText = '100%';
+                modalIcon.className = "h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-xl flex-shrink-0";
+                modalIcon.innerHTML = `<i class="fa-solid fa-circle-check"></i>`;
+                document.getElementById('trainModalTitle').innerText = "Training Mukammal!";
+                document.getElementById('trainModalSubtitle').innerText =
+                    `Best Accuracy: ${s.final_accuracy || '—'}%  ·  ${s.time_taken || '—'}s mein complete`;
+                resultBox.className = "p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 space-y-1";
+                resTitle.innerText = "Model Live & Active!";
+                const names = (s.students || []).map(st => st.name).join(', ');
+                resMsg.innerText = `${s.total_samples || 0} samples · ${(s.students||[]).length} student(s) · Recognition engine hot-reload ho gaya. ${names ? '('+names+')' : ''}`;
+                resultBox.classList.remove('hidden');
+                setFinished(true);
+
+            } else if (s.status === 'error') {
+                stopPolling();
+                modalIcon.className = "h-12 w-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center text-xl flex-shrink-0";
+                modalIcon.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i>`;
+                document.getElementById('trainModalTitle').innerText = "Training Failed";
+                document.getElementById('trainModalSubtitle').innerText = s.error || "Koi error aayi.";
+                resultBox.className = "p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1";
+                resTitle.innerText = "Error Encountered";
+                resMsg.innerText = s.error || "Please check server logs.";
+                resultBox.classList.remove('hidden');
+                setFinished(false);
+            }
+        } catch (pollErr) {
+            console.warn("Status poll error:", pollErr);
+        }
+    }
 
     try {
         const resp = await fetch('/api/train_model', { method: 'POST' });
         const data = await resp.json();
 
-        clearTimeout(t1);
-        clearTimeout(t2);
-
-        pBar.style.width = '100%';
-        stepPct.innerText = '100%';
-
-        if (data.success) {
-            stepLabel.innerText = 'Complete!';
-            modalIcon.className = "h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-xl flex-shrink-0";
-            modalIcon.innerHTML = `<i class="fa-solid fa-circle-check"></i>`;
-            document.getElementById('trainModalTitle').innerText = "Training Complete!";
-            document.getElementById('trainModalSubtitle').innerText = "All biometric signatures successfully compiled.";
-
-            resultBox.className = "p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 space-y-1";
-            resTitle.innerText = "Model Active & Live!";
-            resMsg.innerText = data.message || `Trained across ${data.students ? data.students.length : 1} student(s) in ${data.time_taken || 2.5}s.`;
-            resultBox.classList.remove('hidden');
-        } else {
-            stepLabel.innerText = 'Training Failed';
+        if (!data.success && !data.queued) {
+            // Immediate failure (no dataset, already running, etc.)
+            stopPolling();
             modalIcon.className = "h-12 w-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center text-xl flex-shrink-0";
             modalIcon.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i>`;
             document.getElementById('trainModalTitle').innerText = "Training Failed";
-            document.getElementById('trainModalSubtitle').innerText = data.error || "An error occurred during training.";
-
+            document.getElementById('trainModalSubtitle').innerText = data.error || "Unknown error.";
             resultBox.className = "p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1";
-            resTitle.innerText = "Error Encountered";
-            resMsg.innerText = data.error || "Please check that student photos are captured.";
+            resTitle.innerText = "Error";
+            resMsg.innerText = data.error || "Please ensure student photos are captured.";
             resultBox.classList.remove('hidden');
+            setFinished(false);
+            return;
         }
+
+        // Training launched in background — start polling every 2s
+        pBar.style.width = '3%';
+        stepPct.innerText = '3%';
+        stepLabel.innerText = `Training shuru! ${data.total_samples||0} samples · ${(data.students||[]).length} student(s)...`;
+        pollingInterval = setInterval(pollStatus, 2000);
+
     } catch (e) {
-        console.error("Training error:", e);
-        pBar.style.width = '100%';
-        stepLabel.innerText = 'Connection Error';
+        console.error("Training start error:", e);
         resultBox.className = "p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1";
         resTitle.innerText = "Connection Error";
-        resMsg.innerText = "Unable to connect to training API. Please try again.";
+        resMsg.innerText = "Training API se connect nahi ho saka. Please retry.";
         resultBox.classList.remove('hidden');
-    } finally {
-        btn.disabled = false;
-        btnText.innerText = "Train AI Model Now";
-        closeBtn.disabled = false;
-        closeBtn.className = "px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer";
+        setFinished(false);
     }
 }
 

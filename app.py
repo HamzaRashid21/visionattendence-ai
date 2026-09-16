@@ -943,69 +943,399 @@ def export_dataset_zip():
     )
 
 
+# ============================================================
+# Deep Learning Training Engine — Global Training State
+# ============================================================
+_training_state = {
+    "status": "idle",          # idle | running | done | error
+    "progress": 0,             # 0-100 percent
+    "stage": "",               # current stage message
+    "final_accuracy": None,    # float, best val accuracy
+    "students": [],
+    "total_samples": 0,
+    "time_taken": None,
+    "error": None,
+    "log": []
+}
+_training_lock = threading.Lock()
+
+
+def _run_training_background(dataset_dir, student_info, labels_map):
+    """
+    Background thread mein actual MobileNetV2 transfer learning training run karta hai.
+    Isi notebook (model_training.ipynb) ka same architecture use karta hai.
+    """
+    global _training_state
+    import time as _time
+
+    def _log(msg):
+        print(f"[TrainEngine] {msg}")
+        with _training_lock:
+            _training_state["log"].append(msg)
+
+    def _set(stage, progress):
+        with _training_lock:
+            _training_state["stage"] = stage
+            _training_state["progress"] = progress
+
+    t0 = _time.time()
+    try:
+        _log("TensorFlow import ho raha hai...")
+        _set("TensorFlow load ho raha hai...", 2)
+        import tensorflow as tf
+        from tensorflow.keras.preprocessing.image import ImageDataGenerator
+        from tensorflow.keras.applications import MobileNetV2
+        from tensorflow.keras.layers import (Dense, GlobalAveragePooling2D,
+                                              Dropout, BatchNormalization)
+        from tensorflow.keras.models import Model
+        from tensorflow.keras.optimizers import Adam
+        from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+        import matplotlib
+        matplotlib.use("Agg")  # Headless mode (no display needed)
+        import matplotlib.pyplot as plt
+
+        # -- Step 1: Data generators -----------------------------------------
+        _log(f"Dataset generators bana rahe hain ({dataset_dir})...")
+        _set("Dataset prepare ho raha hai...", 8)
+
+        IMG_SIZE = (160, 160)
+        BATCH_SIZE = 16  # Smaller batch for CPU friendliness
+        EPOCHS = 20
+
+        num_classes = len(labels_map)
+
+        train_datagen = ImageDataGenerator(
+            rescale=1.0 / 255.0,
+            rotation_range=20,
+            width_shift_range=0.15,
+            height_shift_range=0.15,
+            shear_range=0.15,
+            zoom_range=0.15,
+            horizontal_flip=True,
+            brightness_range=[0.7, 1.3],
+            validation_split=0.20
+        )
+
+        train_gen = train_datagen.flow_from_directory(
+            dataset_dir,
+            target_size=IMG_SIZE,
+            batch_size=BATCH_SIZE,
+            class_mode="categorical",
+            subset="training",
+            shuffle=True,
+            color_mode="rgb"
+        )
+
+        val_gen = train_datagen.flow_from_directory(
+            dataset_dir,
+            target_size=IMG_SIZE,
+            batch_size=BATCH_SIZE,
+            class_mode="categorical",
+            subset="validation",
+            shuffle=False,
+            color_mode="rgb"
+        )
+
+        actual_num_classes = train_gen.num_classes
+        _log(f"Dataset ready: {train_gen.samples} train, {val_gen.samples} val, {actual_num_classes} classes.")
+        _set(f"Dataset ready ({train_gen.samples} images, {actual_num_classes} students)", 15)
+
+        # -- Step 2: Build MobileNetV2 model ------------------------------------
+        _log("MobileNetV2 architecture build ho rahi hai (ImageNet weights)...")
+        _set("MobileNetV2 model bana rahe hain...", 20)
+
+        base_model = MobileNetV2(
+            input_shape=(160, 160, 3),
+            include_top=False,
+            weights="imagenet"
+        )
+        base_model.trainable = False  # Freeze base during Phase 1
+
+        x = base_model.output
+        x = GlobalAveragePooling2D()(x)
+        x = BatchNormalization()(x)
+        x = Dense(256, activation="relu")(x)
+        x = Dropout(0.4)(x)
+        x = BatchNormalization()(x)
+        predictions = Dense(actual_num_classes, activation="softmax")(x)
+
+        model = Model(inputs=base_model.input, outputs=predictions,
+                      name="VisionAttend_Face_Classifier")
+
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss="categorical_crossentropy",
+            metrics=["accuracy"]
+        )
+        _log(f"Model ready: {model.count_params():,} parameters.")
+        _set("Model compile ho gaya. Training shuru...", 25)
+
+        # -- Step 3: Callbacks --------------------------------------------------
+        os.makedirs("models", exist_ok=True)
+        h5_path = os.path.join("models", "attendance_model.h5")
+
+        class ProgressCallback(tf.keras.callbacks.Callback):
+            def on_epoch_end(self, epoch, logs=None):
+                logs = logs or {}
+                pct = 25 + int(((epoch + 1) / EPOCHS) * 55)
+                val_acc = logs.get("val_accuracy", 0)
+                val_loss = logs.get("val_loss", 0)
+                _log(f"Epoch {epoch+1}/{EPOCHS} — val_acc: {val_acc:.4f}, val_loss: {val_loss:.4f}")
+                _set(
+                    f"Epoch {epoch+1}/{EPOCHS} | Val Accuracy: {val_acc*100:.1f}%",
+                    min(pct, 79)
+                )
+
+        callbacks = [
+            ModelCheckpoint(
+                filepath=h5_path,
+                monitor="val_accuracy",
+                save_best_only=True,
+                verbose=0
+            ),
+            EarlyStopping(
+                monitor="val_loss",
+                patience=5,
+                restore_best_weights=True,
+                verbose=0
+            ),
+            ReduceLROnPlateau(
+                monitor="val_loss",
+                factor=0.3,
+                patience=3,
+                min_lr=1e-6,
+                verbose=0
+            ),
+            ProgressCallback()
+        ]
+
+        # -- Step 4: Phase 1 training (frozen base) ----------------------------
+        _log("Phase 1 training shuru (frozen MobileNetV2 base)...")
+        history = model.fit(
+            train_gen,
+            epochs=EPOCHS,
+            validation_data=val_gen,
+            callbacks=callbacks,
+            verbose=0
+        )
+
+        best_val_acc = max(history.history.get("val_accuracy", [0]))
+        _log(f"Phase 1 complete. Best val accuracy: {best_val_acc:.4f}")
+        _set(f"Training mukammal! Accuracy: {best_val_acc*100:.1f}%", 80)
+
+        # -- Step 5: Training curves ------------------------------------------
+        _log("Training curves save ho rahi hain...")
+        _set("Performance graphs generate ho rahe hain...", 82)
+        try:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+            ax1.plot(history.history["accuracy"], label="Train Acc", color="#10B981", linewidth=2)
+            ax1.plot(history.history["val_accuracy"], label="Val Acc", color="#3B82F6", linewidth=2, linestyle="--")
+            ax1.set_title("Model Accuracy vs Epochs", fontweight="bold")
+            ax1.set_xlabel("Epoch"); ax1.set_ylabel("Accuracy")
+            ax1.legend(); ax1.grid(True, alpha=0.3)
+
+            ax2.plot(history.history["loss"], label="Train Loss", color="#EF4444", linewidth=2)
+            ax2.plot(history.history["val_loss"], label="Val Loss", color="#F59E0B", linewidth=2, linestyle="--")
+            ax2.set_title("Model Loss vs Epochs", fontweight="bold")
+            ax2.set_xlabel("Epoch"); ax2.set_ylabel("Loss")
+            ax2.legend(); ax2.grid(True, alpha=0.3)
+
+            plt.tight_layout()
+            plt.savefig(os.path.join("models", "training_curves.png"), dpi=150)
+            plt.close(fig)
+            _log("Training curves saved: models/training_curves.png")
+        except Exception as curve_err:
+            _log(f"[!] Curves save error (non-critical): {curve_err}")
+
+        # -- Step 6: Confusion matrix -----------------------------------------
+        _set("Confusion matrix generate ho rahi hai...", 86)
+        try:
+            import numpy as np_cm
+            try:
+                import seaborn as sns
+                _has_sns = True
+            except ImportError:
+                _has_sns = False
+
+            val_gen.reset()
+            preds = model.predict(val_gen, verbose=0)
+            y_pred = np_cm.argmax(preds, axis=1)
+            y_true = val_gen.classes
+            class_labels = list(val_gen.class_indices.keys())
+
+            from sklearn.metrics import confusion_matrix as sk_cm
+            cm = sk_cm(y_true, y_pred)
+
+            fig2, ax = plt.subplots(figsize=(max(6, actual_num_classes + 2),
+                                              max(5, actual_num_classes + 1)))
+            if _has_sns:
+                sns.heatmap(cm, annot=True, fmt="d", cmap="Greens",
+                            xticklabels=class_labels, yticklabels=class_labels, ax=ax)
+            else:
+                ax.imshow(cm, cmap="Greens")
+                for i in range(len(class_labels)):
+                    for j in range(len(class_labels)):
+                        ax.text(j, i, str(cm[i, j]), ha="center", va="center")
+
+            ax.set_title("Confusion Matrix — Student Recognition", fontweight="bold")
+            ax.set_xlabel("Predicted Student"); ax.set_ylabel("Actual Student")
+            plt.xticks(rotation=45, ha="right"); plt.tight_layout()
+            plt.savefig(os.path.join("models", "confusion_matrix.png"), dpi=150)
+            plt.close(fig2)
+            _log("Confusion matrix saved: models/confusion_matrix.png")
+        except Exception as cm_err:
+            _log(f"[!] Confusion matrix error (non-critical): {cm_err}")
+
+        # -- Step 7: TFLite conversion ----------------------------------------
+        _log("TFLite conversion shuru (edge optimization)...")
+        _set("TFLite model convert ho raha hai...", 90)
+        try:
+            converter = tf.lite.TFLiteConverter.from_keras_model(model)
+            converter.optimizations = [tf.lite.Optimize.DEFAULT]
+            tflite_model = converter.convert()
+            tflite_path = os.path.join("models", "attendance_model.tflite")
+            with open(tflite_path, "wb") as f:
+                f.write(tflite_model)
+            size_mb = len(tflite_model) / (1024 * 1024)
+            _log(f"TFLite exported: {tflite_path} ({size_mb:.2f} MB)")
+        except Exception as tflite_err:
+            _log(f"[!] TFLite conversion warning: {tflite_err}")
+
+        # -- Step 8: Hot-reload recognition engine ----------------------------
+        _set("Recognition engine hot-reload ho raha hai...", 96)
+        try:
+            with app.app_context():
+                from src import recognizer as _rec
+                _rec._model_instance = None
+                _rec._model_backend = None
+                _rec._labels_map = {}
+                _rec._input_idx = None
+                _rec._output_idx = None
+                _rec.load_model_if_available()
+                _rec.get_biometric_templates(force_reload=True)
+            _log("Recognition engine successfully hot-reloaded.")
+        except Exception as reload_err:
+            _log(f"[!] Hot-reload warning: {reload_err}")
+
+        dt = round(_time.time() - t0, 2)
+        _log(f"Training complete in {dt}s. Best val accuracy: {best_val_acc*100:.1f}%")
+
+        with _training_lock:
+            _training_state.update({
+                "status": "done",
+                "progress": 100,
+                "stage": f"Training mukammal! Best Accuracy: {best_val_acc*100:.1f}%",
+                "final_accuracy": round(best_val_acc * 100, 1),
+                "time_taken": dt
+            })
+
+    except Exception as e:
+        import traceback
+        err_msg = str(e)
+        _log(f"[FATAL ERROR] Training fail: {err_msg}")
+        _log(traceback.format_exc())
+        with _training_lock:
+            _training_state.update({
+                "status": "error",
+                "progress": 0,
+                "stage": f"Error: {err_msg}",
+                "error": err_msg
+            })
+
+
 @app.route('/api/train_model', methods=['POST'])
 @admin_required
 def train_model_api():
     """
-    One-Click In-System Model Training Engine:
-    1. Scans dataset/ for enrolled students and validates sample counts.
-    2. Computes normalized multi-angle 160x160 biometric signatures for every student.
-    3. Updates models/labels.json mapping active student IDs to class indices.
-    4. Hot-reloads the biometric recognition engine in Flask memory.
-    5. Returns training metrics, student summary, and processing duration.
+    One-Click Real Deep Learning Training Engine:
+    - MobileNetV2 Transfer Learning (same as model_training.ipynb)
+    - Background thread mein run hota hai (UI block nahi hoti)
+    - /api/train_status se real-time progress milta hai
+    - .h5, .tflite, labels.json, training_curves.png, confusion_matrix.png sab generate karta hai
     """
-    t0 = time.time()
+    global _training_state
+
+    with _training_lock:
+        if _training_state["status"] == "running":
+            return jsonify({
+                "success": False,
+                "error": "Training already chal rahi hai! Pehli training khatam hone do."
+            }), 409
+
     dataset_dir = "dataset"
 
     if not os.path.exists(dataset_dir):
         return jsonify({"success": False, "error": "dataset/ directory nahi mili."}), 400
 
-    student_folders = [f for f in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, f))]
+    student_folders = sorted([
+        f for f in os.listdir(dataset_dir)
+        if os.path.isdir(os.path.join(dataset_dir, f))
+    ])
     if not student_folders:
-        return jsonify({"success": False, "error": "dataset/ mein koi student folder mojood nahi hai. Pehle student enroll karke photos capture karein."}), 400
+        return jsonify({
+            "success": False,
+            "error": "dataset/ mein koi student folder nahi hai. Pehle photos capture karein."
+        }), 400
 
-    trained_students = []
+    student_info = []
     labels_map = {}
     total_samples = 0
 
-    for idx, folder in enumerate(sorted(student_folders)):
+    for idx, folder in enumerate(student_folders):
         fpath = os.path.join(dataset_dir, folder)
         imgs = [f for f in os.listdir(fpath) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
         parts = folder.split("_", 1)
         sid = parts[0]
         sname = parts[1].replace("_", " ") if len(parts) > 1 else folder
-
         labels_map[str(idx)] = folder
         total_samples += len(imgs)
-        trained_students.append({
-            "student_id": sid,
-            "name": sname,
-            "samples": len(imgs)
-        })
+        student_info.append({"student_id": sid, "name": sname, "samples": len(imgs)})
 
     if total_samples == 0:
-        return jsonify({"success": False, "error": "Student folders mein koi photos mojood nahi hain. Pehle photos capture karein."}), 400
+        return jsonify({"success": False, "error": "Photos nahi hain. Pehle photos capture karein."}), 400
 
-    # Save updated models/labels.json
+    # Save labels.json (same mapping as Colab notebook)
     os.makedirs("models", exist_ok=True)
     with open(os.path.join("models", "labels.json"), "w") as f:
         json.dump(labels_map, f, indent=4)
 
-    # Hot-reload biometric templates cache in memory
-    try:
-        from src.recognizer import get_biometric_templates
-        get_biometric_templates(force_reload=True)
-    except Exception as e:
-        print(f"[!] Biometric hot-reload error: {e}")
+    # Reset training state and launch background thread
+    with _training_lock:
+        _training_state.update({
+            "status": "running",
+            "progress": 1,
+            "stage": "Training thread launch ho rahi hai...",
+            "final_accuracy": None,
+            "students": student_info,
+            "total_samples": total_samples,
+            "time_taken": None,
+            "error": None,
+            "log": [f"Training start: {len(student_info)} students, {total_samples} samples"]
+        })
 
-    dt = round(time.time() - t0, 2)
+    t = threading.Thread(
+        target=_run_training_background,
+        args=(dataset_dir, student_info, labels_map),
+        daemon=True
+    )
+    t.start()
+
     return jsonify({
         "success": True,
-        "message": f"AI model {len(trained_students)} student(s) aur {total_samples} samples par successfully compile & live reload ho gaya!",
-        "students": trained_students,
-        "total_samples": total_samples,
-        "time_taken": dt
+        "queued": True,
+        "message": f"Training background mein shuru ho gayi! {len(student_info)} students, {total_samples} samples.",
+        "students": student_info,
+        "total_samples": total_samples
     })
+
+
+@app.route('/api/train_status')
+@admin_required
+def train_status_api():
+    """Real-time training progress status — UI polling ke liye."""
+    with _training_lock:
+        state_copy = dict(_training_state)
+    return jsonify(state_copy)
 
 
 @app.route('/students/add', methods=['POST'])
